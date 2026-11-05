@@ -1,66 +1,37 @@
 \section{Related Work}
 \label{sec:related}
 
-\paragraph{Length generalisation.} Transformers fit short sequences but degrade
-sharply when asked to solve the same task at greater length
-\citep{anil2022exploring,deletang2023neural}. The failure is not merely a matter of
-scale: it persists in large language models and is only partially mitigated by
-scratchpad supervision \citep{anil2022exploring}. Two explanations have been
-offered. The first is architectural: self-attention with a fixed number of layers
-cannot represent certain length-dependent computations unless depth or width grows
-with the input \citep{hahn2020theoretical}. The second is algorithmic: a task
-extrapolates when it admits a short program over attention primitives that works at
-every length \citep{weiss2021thinking,zhou2023what}, and shallow Transformers learn
-``shortcut'' solutions that fit the training lengths and break outside them
-\citep{liu2023shortcuts}. Both locate the obstacle in the computational structure of
-the task rather than in the position code.
+\paragraph{Length generalisation and positional encodings.} Transformers fit short
+sequences and degrade sharply beyond them
+\citep{anil2022exploring,deletang2023neural}. The explanations offered are mostly
+computational: attention of fixed depth cannot represent certain length-dependent
+functions \citep{hahn2020theoretical}; a task extrapolates when it admits a short
+program over attention primitives \citep{weiss2021thinking,zhou2023what}; shallow
+models learn shortcuts that fit the training lengths and break outside them
+\citep{liu2023shortcuts}. Orthogonal to this is the choice of positional code---a
+distinct vector per position \citep{vaswani2017attention}, or pairwise information
+injected through learned relative representations \citep{shaw2018self}, bucketed
+biases \citep{raffel2020exploring}, rotations \citep{su2024roformer} or a linear
+distance penalty \citep{press2022train}---together with a family of schemes built for
+the extrapolation regime: log-decaying biases \citep{chi2023dissecting},
+resolution-maximising codes \citep{sun2023length}, randomised position sampling
+\citep{ruoss2023randomized}, and priming with long examples
+\citep{jelassi2023length}; \citet{zhao2024survey} survey the family. The headline
+result is that no positional encoding beats five explicit alternatives across ten
+tasks \citep{kazemnejad2023impact}, with follow-up work bounding how far that holds
+and tracing the residual breakdown to unfocused attention \citep{wang2024length}.
+Almost all of it is scored by exact match.
 
-\paragraph{The EOS decision.} A separate line of work studies the modelling decision
-to predict an end-of-sequence token. \citet{newman2020eos} show that models trained
-to predict EOS extrapolate substantially worse than models that are not, and trace
-the difference to hidden states that stratify by position (``length manifolds'') and
-then stall (``length attractors''); they evaluate in the oracle-length setting we adopt in
-\secref{sec:stop}. Their experiments vary the EOS decision and hold the
-architecture fixed. Ours varies the positional encoding and holds the EOS decision
-fixed, then removes it---which is what connects the two literatures.
-
-\paragraph{Positional encodings.} Absolute encodings, sinusoidal
-\citep{vaswani2017attention} or learned, give each position a distinct vector.
-Relative schemes inject pairwise information instead: learned relative
-representations \citep{shaw2018self}, T5's bucketed bias
-\citep{raffel2020exploring}, rotary embeddings that rotate queries and keys by a
-position-dependent angle \citep{su2024roformer}, and ALiBi's linear distance penalty
-\citep{press2022train}. The last two were introduced as length-extrapolation devices,
-yet head-to-head comparisons have been unflattering to them
-\citep{kazemnejad2023impact}.
-
-\paragraph{Designs built for extrapolation.} A parallel line engineers encodings for
-the extrapolation regime directly: log-decaying attention biases derived from
-receptive-field analysis \citep{chi2023dissecting}, relative encodings that maximise
-attention resolution \citep{sun2023length}, and randomised position sampling so that
-a model never sees a narrower range of positions than it meets at test time
-\citep{ruoss2023randomized}. Arithmetic has served as a stress test: relative
-embeddings suffice for addition but not multiplication, where priming with long
-examples is required \citep{jelassi2023length}. A survey organises these methods by
-encoding family and by the mechanism each attributes the failure to
-\citep{zhao2024survey}. Nearly all of them are evaluated by exact match, which
-\secref{sec:results} shows is confounded by termination.
-
-\paragraph{The no-PE result and its scope.} \citet{kazemnejad2023impact} evaluate five
-schemes across ten tasks and conclude that no positional encoding is better than any
-explicit alternative. Follow-up work probes the limits of that result, finding that
-no-PE models still extrapolate only to a bounded context and tracing the breakdown
-to attention becoming unfocused \citep{wang2024length}. Our \tabref{tab:main}
-reproduces their ordering at our scale; what we add is a decomposition showing that
-on same-length tasks the ordering is largely a comparison of termination policies,
-and that it reverses when the termination decision is removed.
-
-\paragraph{Mechanistic evidence.} Small algorithmic models are tractable enough to
-reverse-engineer, and much of what is known about length-dependent behaviour comes
-from that setting: grokking was characterised as a transition from memorisation to a
-structured circuit \citep{power2022grokking,nanda2023progress}, and induction heads
-were identified as a mechanism for copying from context
-\citep{olsson2022induction}. We offer behavioural evidence rather than a circuit
-analysis; the profile in \figref{fig:profile} constrains what such an account must
-explain---an EOS decision placed at a constant index---but does not itself localise
-the computation.
+\paragraph{The EOS decision.} A separate literature studies the decision to predict an
+end-of-sequence token at all. \citet{newman2020eos} show that models trained to predict
+EOS extrapolate substantially worse than models that are not, trace the difference to
+hidden states that stratify by position and then stall, and evaluate in the
+oracle-length setting we adopt in \secref{sec:stop}. Their experiments vary the EOS
+decision and hold the architecture fixed; ours varies the positional encoding and holds
+the EOS decision fixed, then removes it---which is what connects the two literatures.
+Small algorithmic models are the usual place to look for mechanism---grokking as a
+transition from memorisation to a structured circuit
+\citep{power2022grokking,nanda2023progress}, induction heads as a copying mechanism
+\citep{olsson2022induction}---and we offer behaviour of that kind rather than a circuit
+analysis: the profile in \figref{fig:profile} constrains what such an account must
+explain, but does not localise the computation.
