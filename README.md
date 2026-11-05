@@ -1,4 +1,11 @@
-# Autoresearch 一次完整跑通：位置编码 × 长度泛化
+# Explicit Positional Encodings Turn Length Generalisation into Lookup
+
+[![Lean proofs](https://github.com/lvdousha26/positional-lookup/actions/workflows/lean.yml/badge.svg)](https://github.com/lvdousha26/positional-lookup/actions/workflows/lean.yml)
+
+**论文页面**：https://lvdousha26.github.io/positional-lookup/
+**PDF**：[paper/main.pdf](paper/main.pdf) ·
+**讲解视频**：[video/lookup.mp4](video/lookup.mp4) ·
+**Lean 形式化**：[lean/](lean/)
 
 一次端到端的自动化科研流程演示：文献 → 假设 → 实验 → 分析 → 论文 → 自我评审。
 
