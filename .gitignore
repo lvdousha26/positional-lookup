@@ -13,6 +13,9 @@ paper/*.out
 paper/*.toc
 paper/*.synctex.gz
 
+# internal workspace data (never published)
+.workbuddy/
+
 # scratch
 results/smoke/
 video/frame_*.png
