@@ -12,8 +12,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build and check proofs
-        uses: leanprover/lean-action@v1
+      - name: Install elan
+        run: |
+          curl -sSf https://elan.lean-lang.org/elan-init.sh | sh -s -- -y
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+
+      - name: Cache Lake artifacts
+        uses: actions/cache@v4
         with:
-          lake-package-directory: lean
-          use-github-cache: true
+          path: lean/.lake
+          key: lake-${{ hashFiles('lean/lean-toolchain') }}
+          restore-keys: lake-
+
+      - name: Generate manifest
+        working-directory: lean
+        run: lake update
+
+      - name: Build and check proofs
+        working-directory: lean
+        run: lake build
