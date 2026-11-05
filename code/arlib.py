@@ -22,7 +22,17 @@ VOCAB = VALUES + 2
 #   position map independent of L : copy, prefix_xor, sort
 #   position map depends on L     : swap_halves, reverse
 TASKS = ("copy", "prefix_xor", "sort", "swap_halves", "reverse")
-PES = ("nope", "learned", "sin", "rope", "alibi")
+PES = ("nope", "learned", "sin", "rope", "alibi", "qk_abs")
+
+# Where a code can enter, and what it can therefore express.
+#   representation : one vector per token  => absolute index only
+#   q/k            : dot product over pairs => absolute (key salience) or relative
+#   attention logits: additive bias; a row-constant bias is annihilated by
+#                     softmax, so any *effective* logit code is pairwise/relative
+SITE = {"nope": None, "learned": "rep", "sin": "rep",
+        "qk_abs": "qk", "rope": "qk", "alibi": "logits"}
+KIND = {"nope": None, "learned": "absolute", "sin": "absolute",
+        "qk_abs": "absolute", "rope": "relative", "alibi": "relative"}
 
 COUPLED = {"swap_halves", "reverse"}
 
@@ -103,6 +113,12 @@ class Attn(nn.Module):
         self.h, self.dh, self.pe = h, d // h, pe
         self.qkv = nn.Linear(d, 3 * d, bias=False)
         self.o = nn.Linear(d, d, bias=False)
+        # qk_abs: the *same* fixed sinusoidal code as ``sin``, but projected into
+        # the query/key subspace instead of the residual stream. This is the cell
+        # that separates "where the code enters" from "whether the code is
+        # absolute": absolute code, pairwise injection site.
+        if pe == "qk_abs":
+            self.pos_proj = nn.Linear(d, 2 * d, bias=False)
 
     def forward(self, x, pos):
         B, T, D = x.shape
@@ -112,6 +128,11 @@ class Attn(nn.Module):
         v = v.view(B, T, self.h, self.dh).transpose(1, 2)
         if self.pe == "rope":
             q, k = _rope(q, k, pos)
+        elif self.pe == "qk_abs":
+            pe_t = _sinusoid(T, D).to(x.device)
+            oq, ok = self.pos_proj(pe_t).split(D, dim=1)
+            q = q + oq.view(1, T, self.h, self.dh).transpose(1, 2)
+            k = k + ok.view(1, T, self.h, self.dh).transpose(1, 2)
         att = (q @ k.transpose(-1, -2)) / math.sqrt(self.dh)
         if self.pe == "alibi":
             att = att + _alibi(T, self.h, x.device)

@@ -1,0 +1,9 @@
+Traceback (most recent call last):
+  File "C:\Users\25097\WorkBuddy\autoresearch\code\analyze_padded.py", line 16, in <module>
+    import torch
+  File "C:\Users\25097\.workbuddy\binaries\python\versions\3.13.12\Lib\site-packages\torch\__init__.py", line 270, in <module>
+    _load_dll_libraries()
+    ~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\25097\.workbuddy\binaries\python\versions\3.13.12\Lib\site-packages\torch\__init__.py", line 253, in _load_dll_libraries
+    raise err
+OSError: [WinError 1455] 页面文件太小，无法完成操作。 Error loading "C:\Users\25097\.workbuddy\binaries\python\versions\3.13.12\Lib\site-packages\torch\lib\cufft64_10.dll" or one of its dependencies.

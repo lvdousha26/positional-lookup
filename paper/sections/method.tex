@@ -1,89 +1,7 @@
-\section{Length-Coupling: A Task Axis for Positional Encoding}
+\section{Where Position Can Enter, and What a Boundary Is}
 \label{sec:method}
 
-Our starting point is a simple observation about the studies that motivate this
-paper. When the effect of a design choice is summarised as a single ranking over
-a task battery, the ranking is only interpretable if that effect is roughly
-homogeneous across tasks. We argue that for positional encoding it is not, and
-that the relevant axis of heterogeneity is a property of the \emph{task}, not of
-the model.
-
-\subsection{Positional rules}
-
-Let a task family be a collection of maps indexed by length,
-\begin{equation}
-\mathcal{T}=\{T_L\}_{L\ge 1}, \qquad T_L:\mathcal{X}^{L}\longrightarrow\mathcal{Y}^{L},
-\label{eq:task}
-\end{equation}
-and write $T_L(x)_i$ for the $i$-th output token of $T_L(x)$. For a given input
-$x\in\mathcal{X}^{L}$, let $S_L(i;x)\subseteq[L]$ be the minimal set of input
-positions that $T_L(x)_i$ depends on, i.e.\ the support of $T_L(x)_i$ when it is
-regarded as a function of the input positions with the values held fixed.
-
-\begin{definition}[Positional rule]
-\label{def:rule}
-$\mathcal{T}$ admits a positional rule if there is a function
-$\rho:[L]\times\mathbb{N}\to 2^{[L]}$ such that for every $L$, every
-$i\in[L]$ and every $x\in\mathcal{X}^{L}$,
-\begin{equation}
-S_L(i;x)=\rho(i,L).
-\label{eq:rule}
-\end{equation}
-That is, the input positions an output token reads are fixed by the output index
-and the sequence length alone, independently of the values in $x$.
-\end{definition}
-
-\begin{definition}[Length-coupling]
-\label{def:coupling}
-A task family with positional rule $\rho$ is \emph{length-coupled} if $\rho$
-depends on its second argument,
-\begin{equation}
-\exists\, i,\,L,\,L' : \quad \rho(i,L)\neq\rho(i,L'),
-\label{eq:coupled}
-\end{equation}
-and \emph{length-decoupled} if it does not, i.e.\ if
-$\rho(i,L)=\rho_0(i)$ for all $L$ and some $\rho_0$. A family that admits no
-positional rule in the sense of \secref{sec:method} is \emph{position-free}.
-\end{definition}
-
-\tabref{tab:tasks} instantiates the taxonomy on the five tasks we study.
-\emph{Copy} reads input $i$ to produce output $i$, and \emph{prefix-XOR} reads
-the prefix $1..i$; in both cases the rule is the same for every $L$.
-\emph{Reverse} maps output $i$ to input $L{+}1{-}i$, and \emph{swap-halves} maps
-it to $(i{+}L/2)\bmod L$; both rules are stated in terms of $L$ and therefore
-change as $L$ changes. \emph{Sort} is position-free: which input position
-supplies output $i$ is decided by the relative magnitudes of the values, so no
-positional rule exists---yet its outputs still depend on the entire input, which
-is why a coarse notion such as ``global vs.\ local'' would misclassify it as
-hard for the same reason as reverse.
-
-\begin{table}[t]
-\centering
-\small
-\caption{The five tasks, ordered by length-coupling. $S_L(i)$ is the input
-positions read by output $i$; ``rule'' is the corresponding positional rule
-$\rho(i,L)$. Only the two L-coupled tasks have a rule that cannot be evaluated
-without knowing the test length.}
-\label{tab:tasks}
-\begin{tabular}{@{}llll@{}}
-\toprule
-Task & $S_L(i)$ & Rule $\rho(i,L)$ & Class \\
-\midrule
-copy         & $\{i\}$       & $i$              & decoupled \\
-prefix-XOR   & $\{1,\dots,i\}$ & $1..i$         & decoupled \\
-sort         & ---           & none             & position-free \\
-swap-halves  & $\{(i{+}L/2)\bmod L\}$ & $(i{+}L/2)\bmod L$ & \textbf{coupled} \\
-reverse      & $\{L{+}1{-}i\}$ & $L{+}1{-}i$    & \textbf{coupled} \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-\input{sections/fig_taxonomy}
-
-\subsection{Three places position can enter}
-
-Every encoding we compare can be written as a special case of a single causal
-attention layer,
+Every encoding we compare is a special case of a single causal attention layer,
 \begin{equation}
 \mathrm{Attn}(Q,K,V)_i
 = \sum_{j\le i}
@@ -93,61 +11,51 @@ v_j ,
 \label{eq:attn}
 \end{equation}
 with $q_i=W_Q h_i$, $k_j=W_K h_j$, $v_j=W_V h_j$ and $h_i$ the residual stream at
-position $i$. Position can be injected at exactly three sites, and the encodings
-we study occupy all three:
-\begin{enumerate}
-\item[(i)] into the token representation, $h_i = e(x_i) + p_i$, with $p_i$ either
-learned or a fixed sinusoid (APE, sin);
-\item[(ii)] into the query/key geometry, $q_i \mapsto R_{\Theta,i}q_i$, so that
-$\langle q_i,k_j\rangle$ depends on $i-j$ alone (RoPE);
-\item[(iii)] into the logits through a bias $B_{ij}$ that carries no information
-about the token content (ALiBi);
+position $i$. Position can enter at exactly three sites:
+\begin{enumerate}[leftmargin=1.4em,itemsep=0pt,topsep=1pt]
+\item[(i)] the token representation, $h_i = e(x_i) + p_i$, with $p_i$ learned or a
+  fixed sinusoid (learned, sin);
+\item[(ii)] the query/key geometry, $q_i \mapsto R_{\Theta,i}q_i$ or
+  $q_i \mapsto q_i + W_q p_i$ (rotary, $q/k$-absolute);
+\item[(iii)] the logits, through a bias $B_{ij}$ that carries no token content
+  (ALiBi);
 \end{enumerate}
-and \nope{} is the fourth case, in which all three sites are left untouched and
-order is conveyed only by the causal mask $j\le i$. Writing the encodings this
-way matters for the interpretation of our results: our design varies site (i)
-against site (iii) and against nothing, but never holds the positional signal
-fixed while varying only its injection site. We return to this in
-\secref{sec:discussion}.
+and \nope{} is the fourth case, in which all three are left untouched and order is
+conveyed only by the causal mask $j\le i$.
 
-\subsection{Why coupling should change the sign of the PE effect}
+\paragraph{The logits site cannot host an absolute code.} This removes one cell from
+the design and explains a gap in the literature. Suppose a bias decomposes as
+$B_{ij} = c_i + B'_{ij}$, with a component that depends on the query index alone.
+For fixed $i$, $c_i$ appears in every term of both the numerator and the denominator
+of \eqref{eq:attn} and cancels:
+\begin{equation}
+\frac{e^{c_i}e^{s_{ij}}}{\sum_{j'} e^{c_i}e^{s_{ij'}}}
+= \frac{e^{s_{ij}}}{\sum_{j'} e^{s_{ij'}}}, \qquad s_{ij}=\langle q_i,k_j\rangle/\sqrt{d_h}.
+\label{eq:shift}
+\end{equation}
+An additive position signal that is constant along the key axis is therefore
+unobservable. Any logits code that has an effect must vary with $j$ as well as $i$;
+it is a function of the \emph{pair}. This is why every effective logits code in the
+literature---ALiBi, T5 buckets, relative bias generally---is relative, and why
+``absolute at the logits'' is not a condition one can run. It also means the usual
+battery confounds site with kind: all absolute codes sit at site (i), and the only
+codes at sites (ii) and (iii) are relative. The $q/k$-absolute condition of
+\eqref{eq:qkabs} exists to break that confound.
 
-Consider a decoder-only model trained at a single length $L_{\mathrm{tr}}$ and
-evaluated at $L>L_{\mathrm{tr}}$.
+\paragraph{Boundaries.} Write $y_1\ldots y_L$ for the answer segment and
+$\mathrm{stop}(x)$ for the index at which a trained model emits EOS when run
+autoregressively. We say the model \emph{truncates} when $\mathrm{stop}(x) < L$: it
+produces a prefix and then declines to continue, rather than producing $L$ tokens of
+which some are wrong. These are different failures and exact match reports them
+identically.
 
-\paragraph{Decoupled tasks.} The positional rule is evaluable at any length: to
-produce output $i$ the model must read input $i$ (or $1..i$). In a causal
-Transformer the ordering of tokens is already available through the attention
-mask---the $i$-th position can only attend to positions $\le i$---so an explicit
-position code supplies information that the architecture already encodes. Worse,
-for absolute codes the embeddings at positions $>L_{\mathrm{tr}}$ are either
-untrained (learned APE) or outside the fitted range (sinusoidal), so at test time
-the code is a distribution shift with no compensating benefit. We therefore
-expect explicit PEs to be neutral-to-harmful here, reproducing the conclusion of
-\citet{kazemnejad2023impact}.
-
-\paragraph{Coupled tasks.} The rule $L{+}1{-}i$ cannot be evaluated without
-$L$, so the model must (i) infer the length of the current sequence and (ii)
-compute a length-dependent index. This is a qualitatively different demand. A
-relative code (ALiBi, RoPE) supplies only distances, from which $L$ must still be
-recovered; a no-PE model must recover ordering and length implicitly from
-attention patterns. An analytic absolute code, by contrast, exposes the index $i$
-directly and---because it is a fixed function of position rather than a lookup
-table---remains defined at unseen positions. If any explicit code helps, it
-should be this one, and it should help \emph{here} rather than on decoupled
-tasks.
-
-\paragraph{Position-free tasks.} Output order is determined by values, so no
-positional information is required beyond what the mask provides; PE effects
-should be small.
-
-This yields two predictions that the aggregate-ranking view cannot express:
-\begin{itemize}
-\item[\textbf{P1}] The dispersion of accuracy across PEs is larger for coupled
-than for decoupled tasks.
-\item[\textbf{P2}] The ranking of PEs reverses between the two classes: \nope{}
-is competitive on decoupled tasks and relatively worse on coupled tasks, while
-an analytic absolute code moves in the opposite direction.
-\end{itemize}
-Both are statements about an interaction, so they must be tested with a
-factorial design rather than by averaging over tasks.
+A code is \emph{addressable} if, at generation time, the model can compute a quantity
+that selects a particular output index independently of the token content at that
+index---an absolute index, or an absolute rotation applied at a known index. \nope{}
+cannot: the only positional information is the causal mask, which orders positions
+without labelling them. ALiBi cannot: its bias is a function of $i-j$, which orders
+output positions by distance without naming any of them. The distinction is not
+absolute-versus-relative---rotary is relative and addressable---and not which site
+the code occupies, since \eqref{eq:qkabs} shows an absolute code at site (ii)
+behaving like one at site (i). It is about what the model can refer to, and
+\secref{sec:which} tests whether it predicts which codes truncate.

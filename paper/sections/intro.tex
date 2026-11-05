@@ -1,90 +1,59 @@
 \section{Introduction}
 \label{sec:intro}
 
-A Transformer trained on sequences of length eight will fail on sequences of
-length sixteen, even when the task is copying. The usual fix is to change the
-positional encoding (PE), a decision made before pretraining and expensive to
-reverse, so the diagnosis behind the current advice is worth getting right.
+A decoder trained on sequences of length eight fails on sequences of length
+sixteen, even when the task is copying. Whether to include a positional encoding
+(PE) is the first thing one changes in response, and the decision is fixed before
+pretraining: reversing it later means retraining. So ``which PE'' is not a
+stylistic preference but an expensive commitment, and the evidence behind the
+current advice is worth getting right.
 
-That advice rests on a specific diagnosis: an explicit code assigns the model
-absolute positions, a longer sequence puts it at positions it never saw, and an
-embedding trained on positions $0..7$ is out of distribution at position $12$.
-Two research programmes follow. One removes the code entirely, on the evidence
-that a no-PE decoder extrapolates better than five alternatives across ten tasks
-\citep{kazemnejad2023impact}. The other keeps the code but tries to make it
-extrapolable---log-decaying biases \citep{chi2023dissecting},
+That advice is that explicit codes hurt and removing them helps. An explicit code
+assigns absolute positions, a longer sequence puts the model at positions it never
+saw, and an embedding trained on $0..7$ is out of distribution at position $12$;
+on this account a no-PE decoder should extrapolate better, and across ten tasks it
+does \citep{kazemnejad2023impact}. A second literature treats the same diagnosis
+with better codes---log-decaying biases \citep{chi2023dissecting},
 resolution-maximising relative codes \citep{sun2023length}, randomised position
-sampling \citep{ruoss2023randomized}, priming with long examples
-\citep{jelassi2023length}. Both are treatments for out-of-distribution positions.
+sampling \citep{ruoss2023randomized}.
 
-We propose that the diagnosis is wrong, and that the phenomenon is simpler. An
-explicit code does not merely place the model outside its training range; it lets
-the model adopt a solution that is \emph{indexed by sequence length}, exact at
-$L_{\mathrm{tr}}$ and undefined elsewhere. The difference is operational: if the
-failure is out-of-distribution positions, a better-behaved absolute code can fix
-it; if the failure is a lookup table, it cannot, because the table's extent is set
-by the training length, not by the code's numerical properties.
+Both rely on a metric that cannot support the conclusion. Exact match is a
+conjunction over output tokens, so it scores a model that computes nine of ten
+tokens correctly the same as one that has collapsed---and the same as one that
+simply stopped after eight. That third case has its own literature: predicting an
+end-of-sequence (EOS) token changes how models extrapolate, because generation
+terminates early and hidden states settle into length-indexed attractors
+\citep{newman2020eos}. That work varies the EOS decision; the PE comparison varies
+the code. The two have not been put together, and when they are, the PE ranking on
+copy does not survive.
 
-The two hypotheses are not separable in the standard format, which is why the
-question has stayed open. A sequence of $L$ tokens occupies $2L+1$ positions, so
-``position beyond the trained range'' and ``length beyond the trained length''
-become true at exactly the same moment. Training at one length and testing longer
-confounds them by construction, and a probe that merely repeats this at a second
-training length confounds them again.
+\input{sections/fig_teaser}
 
-We separate them by fixing the total number of tokens. Every example is padded to
-41 tokens with the separator at a fixed index, so all 41 positions occur in every
-training example---including the positions a longer test sequence will use---and
-only the number of \emph{effective} tokens varies. If the failure is
-out-of-distribution position, it should disappear. It does not
-(\figref{fig:padded}).
+\paragraph{What we find.} On a copy task, at $L_{\mathrm{tr}}{=}8$:
 
-\begin{figure}[t]
-\centering
-\includegraphics[width=0.76\textwidth]{../figures/fig0_padded.pdf}
-\caption{Positions are not the variable. Every training example is padded to 41
-tokens with the separator pinned at a fixed index, so all 41 positions occur
-during training and only the effective length varies. The dashed red line marks
-the training length; everything to its right is measured at a length never
-trained on. With every position seen, learned and sinusoidal codes still fall
-from $1.00$ to $0.00$ between $L{=}8$ and $L{=}10$, while \nope{} holds $0.79$
-and ALiBi $0.87$. Copy task, one run per condition.}
-\label{fig:padded}
-\end{figure}
+\begin{itemize}[leftmargin=1.1em,itemsep=1pt,topsep=2pt]
+\item \textbf{The failure is a stop.} With sin, rotary, or learned position, the
+  model is correct at every output position up to the eighth and wrong at every
+  position after it, for every test length; its EOS probability is $1.00$ at the
+  ninth. Forced to produce ten tokens, it scores $0.93$ (sin) and $1.00$ (rotary)
+  token accuracy where exact match is $0.00$ (\secref{sec:stop}).
+\item \textbf{Position ranges are irrelevant.} Fixing the total token count at 41
+  and padding the tail means all 41 positions occur in every training example. The
+  collapse is unchanged (\secref{sec:padded}).
+\item \textbf{Neither the site nor absoluteness explains it.} An absolute code
+  injected at $q/k$ truncates exactly like one added to the residual stream, and
+  rotary---relative by construction---truncates too. What separates the codes is
+  whether the model can address the answer boundary (\secref{sec:which}).
+\item \textbf{Remove the boundary and the ranking reverses.} Trained without any EOS
+  token, rotary copy is perfect at $L{=}16$ ($1.00$ exact match, two seeds) while
+  \nope{} falls to $0.43$ token accuracy (\secref{sec:noeos}). The code that
+  ``cannot extrapolate'' extrapolates furthest once it is not asked to stop.
+\end{itemize}
 
-With every position seen, learned and sinusoidal codes fall from $1.00$ to $0.00$
-between $L{=}8$ and $L{=}10$, while \nope{} holds $0.79$ and ALiBi $0.87$ under
-the same protocol. Position range is therefore not what runs out. The collapse is
-indexed by length.
-
-Two further results keep the account honest. First, we tested the most natural
-task-side alternative---that the effect is organised by whether a task's
-positional rule is written in terms of $L$---and it fails: across five tasks the
-ranking of encodings does not reverse between classes (\secref{sec:results}).
-The axis is not a property of the input--output relation. Second, one scheme
-behaves differently: ALiBi retains $0.91$ at $L{=}10$ on copy where the other
-three reach zero. ALiBi is the only encoding here that adds position to the
-attention logits rather than to the token representation---a place where a
-length-indexed table cannot be written. That is the positive half of the
-diagnosis, and it is what makes it actionable.
-
-\paragraph{What this changes.} If explicit position is harmful because it can be
-memorised, then the design question is not which code is most extrapolable but
-where position is allowed to enter. Our data do not settle that question---one
-exception is a lead, not a result---but they do remove the reason to keep
-searching for a better absolute code, and they explain why the search has
-repeatedly come up empty.
-
-\paragraph{Contributions.}
-\begin{enumerate}
-\item A diagnosis of why explicit positional encodings harm length generalisation:
-   they admit a length-indexed lookup, not merely an out-of-distribution position
-   (\secref{sec:results}).
-\item A discriminating test between the two accounts: a padded protocol that
-   fixes the total token count so that every position occurs in training and only
-   the effective length varies, plus a controlled $5\times5\times2$ study in which
-   every cell first reaches $0.998$ in-distribution accuracy (\secref{sec:setup}).
-\item The rejection of a task-side explanation for the same effect, and one
-   exception (ALiBi) that locates the mechanism at the injection site
-   (\secref{sec:discussion}).
-\end{enumerate}
+\paragraph{What follows.} The practical consequence is a measurement one: a PE
+comparison by exact match measures termination policy as much as computation, and
+reporting forced-length accuracy beside it costs nothing at evaluation time. The
+scientific consequence is narrower than it looks---we study copying, small models
+and two seeds---but it is directional: the diagnosis ``explicit codes put the model
+out of distribution'' is not what the data show. What the data show is that an
+addressable boundary gets used.

@@ -1,0 +1,21 @@
+\begin{table}[t]
+\centering
+\caption{The result we set out to explain: extrapolation score (mean exact match
+over $L\in\{10,12,16,20\}$, two seeds) on the standard protocol, where every code
+but \nope{} and ALiBi scores zero on four of five tasks. Reproduces the ordering
+reported by \citet{kazemnejad2023impact}. The rest of this section shows that most
+of this table is a termination artefact.}
+\label{tab:main}
+\small
+\begin{tabular}{@{}lccccc@{}}
+\toprule
+Task & \nope{} & learned & sin & RoPE & ALiBi \\
+\midrule
+copy                & \textbf{0.34} & 0.00 & 0.00 & 0.00 & 0.31 \\
+prefix-XOR          & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 \\
+sort                & \textbf{0.76} & 0.00 & 0.00 & 0.00 & 0.00 \\
+swap-halves         & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 \\
+reverse             & \textbf{0.29} & 0.00 & 0.00 & 0.00 & 0.00 \\
+\bottomrule
+\end{tabular}
+\end{table}

@@ -1,46 +1,42 @@
 \section{Limitations}
 \label{sec:limitations}
 
-\paragraph{Scale.} Our models have 3.2M parameters and are trained from scratch on
-synthetic sequence tasks. Nothing in our argument requires scale, but nothing in
-our experiments establishes that the same conditioning holds for pretrained
-language models, where positional codes interact with token distributions and
-with training that already spans many lengths. We regard the present study as a
-controlled test of a mechanism, not as a claim about frontier models.
+\paragraph{One task for the strongest claims.} The decomposition, the
+$q/k$-absolute control and the no-EOS experiment are all run on copy. Copy is the
+cleanest case---the answer has the same length as the input, so a truncated answer
+is correct exactly on its prefix---but it is also the most favourable case for our
+argument, and the permutation tasks may not decompose the same way. Extending the
+per-position analysis to \emph{reverse} and \emph{sort} is the first thing we would
+do next; we report only their exact-match behaviour here.
 
-\paragraph{One training length.} All runs use $L_{\mathrm{tr}}{=}8$. A stronger
-version of our claim would show that the coupling classification predicts the
-\emph{shape} of the extrapolation curve across several training lengths, not just
-the sign of a difference at one. This is the most important extension we have not
-run.
+\paragraph{Scale and distribution.} Our models have 3.2M parameters and are trained
+from scratch on synthetic sequences, two seeds per condition. Nothing in the
+mechanism requires scale, but nothing here establishes that it survives
+pretraining, larger models, or natural language, where answers rarely match input
+lengths and the end of an answer is cued by content rather than by a count. The
+claim we defend is correspondingly narrow.
 
-\paragraph{Online sampling.} Each step draws a fresh batch rather than sampling
-from a fixed finite training set. This removes memorisation as an explanation and
-equalises the number of examples across conditions, but it also makes the task
-easier than the fixed-train-set protocol used in some prior work, so absolute
-accuracies are not directly comparable across papers.
+\paragraph{The no-EOS condition changes the task.} Removing the EOS token removes
+the need to decide when to stop, so the model is evaluated at a fixed length by
+construction. That is the point of the comparison---it isolates content---but it
+also means the no-EOS numbers are not an alternative training recipe for
+generation; a model that never predicts EOS cannot stop.
 
-\paragraph{Coverage of the taxonomy.} Five tasks is a small battery, and the
-position-free class is represented by a single task (sort). The two coupled
-tasks, while both length-dependent, differ in how the dependence enters
-(complement versus rotation), so we cannot separate ``coupled'' from ``coupled in
-this particular way''.
+\paragraph{Two seeds.} Enough to see that a $1.00$-versus-$0.00$ gap is not noise,
+not enough for fine ranking claims. The no-EOS condition shows this directly:
+sinusoidal copy lands at $0.28$ and $0.79$ across two seeds, so we report it as
+confirming a mechanism rather than as a fix. Every number quoted is a mean over two
+seeds and we restrict claims to differences an order of magnitude apart.
 
-\paragraph{Confound in the learned-APE condition.} At test lengths the learned
-embedding table is queried at positions never updated during training. This is
-faithful to how learned absolute codes behave in deployment, but it means the
-learned condition conflates ``absolute position is unhelpful'' with ``the
-untrained tail of a lookup table is unhelpful''. A variant with a
-length-extrapolable initialisation would separate the two; we did not run one.
+\paragraph{Online sampling.} Each step draws a fresh batch rather than sampling from
+a fixed finite training set. This removes memorisation of a particular sample as an
+explanation for a difference between codes and equalises the number of examples
+seen, but it makes the task easier than the fixed-train-set protocol of some prior
+work, so absolute accuracies are not comparable across studies.
 
-\paragraph{Statistical power.} Two seeds per cell leave only 25 residual degrees
-of freedom for the interaction test, and treating seeds as replicates is an
-approximation. The interaction we report is far from marginal
-($F(16,25)=32.3$), but the cell-level means it is computed from are noisy enough
-that we would not defend a claim about any single pairwise difference. A
-five-seed replication is the obvious next step and we have not run it.
-
-\paragraph{Behavioural evidence only.} We report accuracy, not mechanism. Claims
-about \emph{why} a coupled task is harder---whether models recover length from
-attention statistics, whether they implement a position-arithmetic circuit---would
-require probing or circuit analysis that we have not performed.
+\paragraph{What we did not test.} We did not test whether masking EOS at inference
+recovers generation quality in a realistic setting, whether length conditioning
+removes the truncation, or whether the addressability distinction predicts
+behaviour for codes outside our battery---monotone biases other than ALiBi,
+learned relative codes, or codes at several sites at once. The ALiBi prediction in
+\secref{sec:discussion} is stated as a prediction for exactly this reason.

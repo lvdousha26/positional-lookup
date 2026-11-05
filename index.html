@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Explicit Positional Encodings Turn Length Generalisation into Lookup</title>
+<title>The Answer Stops at Eight &mdash; termination drives length-generalisation failure</title>
 <style>
   :root{
     --ink:#1a1a1a; --muted:#5f6b76; --rule:#dfe4e9; --accent:#0C5DA5;
@@ -78,8 +78,8 @@
 <body>
 <div class="wrap">
 
-  <h1>Explicit Positional Encodings Turn Length Generalisation into Lookup</h1>
-  <p class="sub">Anonymous submission &middot; 2026</p>
+  <h1>The Answer Stops at Eight</h1>
+  <p class="sub">Termination, not position range, drives length-generalisation failure &middot; 2026</p>
 
   <div class="links">
     <a href="paper/main.pdf">Paper (PDF)</a>
@@ -91,101 +91,105 @@
 
   <h2>Abstract</h2>
   <p class="lede">
-    Explicit positional encodings are widely held to spoil length generalisation because
-    they place the model at absolute positions it never saw in training. We argue that
-    this diagnosis is wrong, and offer a simpler one: an explicit code lets the model
-    adopt a <em>length-indexed lookup</em> that is exact at the training length and
-    undefined everywhere else.
+    A decoder trained on sequences of length eight fails on sequences of length
+    sixteen. That failure is usually blamed on positional encodings: explicit codes put
+    the model at positions it never saw. We show the comparison is confounded by a
+    different decision &mdash; <em>where to emit the end-of-sequence token</em>.
   </p>
   <p>
-    The two accounts are not separable in the usual protocol: a sequence of <em>L</em>
-    tokens occupies 2<em>L</em>+1 positions, so &ldquo;position beyond the trained
-    range&rdquo; and &ldquo;length beyond the trained length&rdquo; become true at the
-    same moment. We separate them by fixing the total token count at 41 and padding
-    every example, so all 41 positions occur during training and only the effective
-    length varies.
+    With an explicit code the model terminates at exactly the training length, with EOS
+    probability 1.00 at that position, so every longer answer is truncated there.
+    Sequence exact match then reports 0.00 for a model that computes almost everything
+    correctly. Under a forced output length the same checkpoints recover 0.91&ndash;0.99
+    token accuracy. Removing EOS supervision altogether reverses the ranking: rotary copy
+    is perfect at <em>L</em>=16, twice the training length, while NoPE falls to 0.43.
   </p>
 
   <figure>
-    <img src="figures/fig0_padded.png" alt="Accuracy versus effective length under the padded protocol">
+    <img src="figures/fig_profile.png" alt="Accuracy and EOS probability by output position, and the effect of moving the training length">
     <figcaption>
-      <b>Positions are not the variable.</b> Every training example is padded to 41 tokens
-      with the separator pinned at a fixed index, so all 41 positions occur during
-      training and only the effective length varies. The dashed red line marks the
-      training length. With every position seen, learned and sinusoidal codes still fall
-      from 1.00 to 0.00 between <em>L</em>=8 and <em>L</em>=10, while NoPE holds 0.79 and
-      ALiBi 0.87.
+      <b>The failure is a stop.</b> (a) Accuracy at each output position, copy, test
+      length 10, trained at 8. Sin, <em>q/k</em>-absolute and rotary are correct at every
+      position up to the eighth and exactly zero from the ninth; NoPE and ALiBi decay
+      gently. (b) The EOS probability jumps to 1.00 at that same position for sin and
+      never exceeds 0.1 for NoPE or ALiBi. (c) Move the training length to 12 and the
+      boundary moves with it.
     </figcaption>
   </figure>
 
   <div class="note">
-    <b>The finding.</b> If the failure were out-of-distribution positions, padding would
-    have fixed it. It does not. What runs out is the <em>length</em>, not the position
-    range &mdash; which is what a table indexed by length would do.
+    <b>The finding.</b> The collapse is not about position ranges &mdash; a protocol in
+    which all 41 positions occur in training does not prevent it &mdash; and not about
+    where the code enters the network, since an absolute code injected at <em>q/k</em>
+    behaves identically to one in the residual stream. It is about whether the model can
+    <em>address</em> the end of its answer.
   </div>
 
   <h2>Main result</h2>
   <p>
-    Extrapolation score (mean exact-match accuracy over <em>L</em> &isin; {10,12,16,20}),
-    two seeds per cell. Every cell first reaches 0.998 in-distribution accuracy, so these
-    are extrapolation failures, not fitting failures.
+    Copy task, fixed-length protocol, mean over two seeds. Every position occurs in every
+    training example. <em>Acc</em> is sequence exact match, <em>Tok</em> per-token
+    accuracy, <em>forced</em> is exact match with EOS masked so generation cannot stop
+    early, and <em>stop</em> is the mean index of the first predicted EOS.
   </p>
   <table>
     <thead>
-      <tr><th>Task</th><th>NoPE</th><th>learned</th><th>sin</th><th>RoPE</th><th>ALiBi</th></tr>
+      <tr><th>Encoding</th><th>Acc</th><th>Tok</th><th>Forced</th><th>Stop</th></tr>
     </thead>
     <tbody>
-      <tr class="hi"><td>copy</td><td class="win">0.34</td><td>0.00</td><td>0.00</td><td>0.00</td><td>0.31</td></tr>
-      <tr><td>prefix-XOR</td><td class="win">0.00</td><td>0.00</td><td>0.00</td><td>0.00</td><td>0.00</td></tr>
-      <tr class="hi"><td>sort</td><td class="win">0.76</td><td>0.00</td><td>0.00</td><td>0.00</td><td>0.00</td></tr>
-      <tr><td>swap-halves<sup>&dagger;</sup></td><td>0.00</td><td>0.00</td><td>0.00</td><td>0.00</td><td>0.00</td></tr>
-      <tr class="hi"><td>reverse<sup>&dagger;</sup></td><td class="win">0.29</td><td>0.00</td><td>0.00</td><td>0.00</td><td>0.00</td></tr>
+      <tr class="hi"><td>NoPE</td><td class="win">0.78</td><td class="win">0.98</td><td>0.99</td><td>9.9</td></tr>
+      <tr class="hi"><td>ALiBi</td><td class="win">0.92</td><td class="win">0.99</td><td class="win">1.00</td><td>9.9</td></tr>
+      <tr><td>learned</td><td>0.00</td><td>0.81</td><td>0.83</td><td>8.0</td></tr>
+      <tr><td>sin</td><td>0.00</td><td>0.80</td><td>0.93</td><td>8.0</td></tr>
+      <tr><td>q/k-absolute</td><td>0.00</td><td>0.80</td><td>0.91</td><td>8.0</td></tr>
+      <tr><td>RoPE</td><td>0.00</td><td>0.80</td><td>1.00</td><td>8.0</td></tr>
     </tbody>
   </table>
   <p style="font-size:13.5px;color:var(--muted);font-family:-apple-system,'Segoe UI',Roboto,sans-serif">
-    <sup>&dagger;</sup> length-coupled task. ALiBi is the only explicit scheme that
-    departs from zero, and it is the only one that adds position to attention logits
-    rather than to the token representation.
+    Every code with an addressable boundary stops at exactly <em>L</em><sub>tr</sub>=8 at
+    every test length; its token accuracy is then 0.80 &mdash; eight tokens out of ten
+    &mdash; while exact match reads 0.00.
   </p>
 
   <figure>
-    <img src="figures/fig1_curves.png" alt="Accuracy versus test length for all five tasks">
+    <img src="figures/fig_noeos.png" alt="Exact match with and without EOS supervision">
     <figcaption>
-      <b>Accuracy versus test length</b>, one panel per task. Learned, sinusoidal and
-      rotary codes coincide numerically and are drawn as one curve. All three collapse at
-      the first length beyond training; NoPE decays gradually on the three tasks it can
-      extrapolate at all.
+      <b>Removing the boundary reverses the ranking.</b> Solid: trained without any EOS
+      token. Dashed: with it. Rotary reaches 1.00 at <em>L</em>=16 while NoPE falls to
+      0.00; the code usually reported as worst at extrapolation extrapolates furthest once
+      it is not asked to stop.
     </figcaption>
   </figure>
 
   <h2>Reproduce</h2>
   <pre><code>git clone https://github.com/lvdousha26/positional-lookup
 cd positional-lookup
-
-# Docker (recommended, CPU is enough for the padded probe)
-docker build -t poslookup .
-docker run --rm poslookup python code/padded.py --task copy --pe sin --steps 2000</code></pre>
-  <pre><code># or natively
 pip install -r requirements.txt
-python code/padded.py --task copy --pe nope  --steps 2000
-python code/padded.py --task copy --pe sin   --steps 2000
-python code/padded.py --task copy --pe alibi --steps 2000
+
+# the decomposition: per-position accuracy, EOS probability, forced length
+python code/run_padded.py --tasks copy --pes nope,alibi,sin,qk_abs,rope --seeds 0,1
+python code/analyze_padded.py
+
+# the causal test: no EOS supervision at all
+python code/probe_noeos.py --pes nope,sin,rope --seeds 0,1
+
 python code/plot_figs.py &amp;&amp; cd paper &amp;&amp; latexmk -pdf main.tex</code></pre>
 
   <h2>Mechanised proofs</h2>
   <p>
-    The definitions of <em>positional rule</em>, <em>length-coupling</em> and
-    <em>position-free</em> are formalised in Lean 4, together with machine-checked proofs
-    that the five tasks in the paper fall where the paper says they do. The empirical
-    claims (the cliff, its location) are <em>not</em> formalised &mdash; they are
+    The three injection sites, the cancellation of any logits bias that is constant along
+    the key axis, and the definitions of <em>truncation</em> and <em>addressability</em> are
+    formalised in Lean 4 and checked in CI. The empirical claims &mdash; where generation
+    stops, and what happens when EOS is removed &mdash; are <em>not</em> formalised: they are
     measurements, not theorems.
   </p>
 
   <hr>
 
   <h2 id="bibtex">BibTeX</h2>
-<pre><code>@article{positional_lookup_2026,
-  title  = {Explicit Positional Encodings Turn Length Generalisation into Lookup},
+<pre><code>@article{stops_at_eight_2026,
+  title  = {The Answer Stops at Eight: Termination, Not Position Range,
+            Drives Length-Generalisation Failure},
   author = {Anonymous},
   year   = {2026},
   note   = {Code: https://github.com/lvdousha26/positional-lookup}

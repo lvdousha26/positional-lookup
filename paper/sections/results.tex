@@ -1,85 +1,156 @@
 \section{Results}
 \label{sec:results}
 
-All 25 cells are solved by our criterion (in-distribution accuracy $\ge 0.95$;
-the minimum observed is $0.998$), so every comparison below is between models
-that learned the task.
+\input{sections/tab_main}
 
-\begin{table}[t]
-\centering
-\small
-\caption{Extrapolation score ES (mean exact-match accuracy over $L\in\{10,12,16,20\}$),
-averaged over seeds and restricted to solved runs. Best per row in bold. Two
-length-coupled tasks are marked $^{\dagger}$. Every cell using an explicit
-additive or rotary code sits at $0.00$; only ALiBi on copy departs from the
-pattern.}
-\label{tab:main}
-\begin{tabular}{@{}lccccc@{}}
-\toprule
-Task & \nope{} & learned & sin & RoPE & ALiBi \\
-\midrule
-copy                    & \textbf{0.34} & 0.00 & 0.00 & 0.00 & 0.31 \\
-prefix-XOR              & \textbf{0.00} & 0.00 & 0.00 & 0.00 & 0.00 \\
-sort                    & \textbf{0.76} & 0.00 & 0.00 & 0.00 & 0.00 \\
-swap-halves$^{\dagger}$ & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 \\
-reverse$^{\dagger}$     & \textbf{0.29} & 0.00 & 0.00 & 0.00 & 0.00 \\
-\bottomrule
-\end{tabular}
-\end{table}
+\tabref{tab:main} is the phenomenon. On five tasks and five encodings, under the
+standard protocol, \nope{} is best or tied everywhere and every explicit code scores
+zero on four of the five tasks. Two of those zeros---\emph{prefix-XOR} and
+\emph{swap-halves}---are failures to fit as much as to extrapolate and are excluded
+from the analysis below; the interesting cases are \emph{copy}, \emph{sort} and
+\emph{reverse}, where the model reaches in-distribution accuracy $1.00$. On copy,
+\nope{} scores $0.34$ and every explicit code $0.00$. That gap is what the rest of
+this section decomposes.
 
-\paragraph{The cliff is not specific to one task.} \figref{fig:curves} repeats the
-pattern of \figref{fig:padded} across the battery. With a learned, sinusoidal or
-rotary code, accuracy is $1.00$ at the training length and $0.00$ at the next one
-tested, on every task where the task can be learned at all. \nope{} instead decays
-smoothly where the task permits extrapolation (copy $0.96$ at $L{=}10$, reverse
-$0.87$, sort $1.00$). Twenty-one of the twenty-five cells have ES below $0.01$,
-eighteen exactly zero; the discrimination between methods comes from the four
-cells that clear it.
+\subsection{Positions are not the variable}
+\label{sec:padded}
 
-\paragraph{The failure is not an out-of-distribution position.} The standard
-format cannot distinguish the two accounts, since $2L+1$ positions grow with $L$.
-\figref{fig:padded} removes the confound: every example is padded to a fixed 41
-tokens with the separator pinned at index 21, so all positions occur in training
-and only the effective length varies. Under this protocol the learned and
-sinusoidal codes still fall from $1.00$ at $L{=}8$ to $0.00$ at $L{=}10$, whereas
-\nope{} retains $0.79$ and ALiBi $0.87$, decaying to $0.02$ and $0.10$ at
-$L{=}12$. Padding costs some accuracy overall---\nope{} reaches $0.96$ at $L{=}10$
-in the standard format and $0.79$ here, plausibly because half the sequence is
-now filler---but the ordering is unchanged and the collapse is undiminished. With
-no unseen position left to blame, the failure has to be indexed by length.
+We first run the experiment the position-range account predicts should succeed.
+Under the fixed-length protocol of \eqref{eq:fixed}, every one of the 41 positions
+occurs in every training example, so no test token sits at a position the model has
+not seen. If the collapse is caused by out-of-distribution positions, it should
+disappear.
+
+It does not. \tabref{tab:padded}, row $L{=}10$: learned, sinusoidal, rotary and
+$q/k$-absolute codes all reach exact match $1.000$ at $L{=}8$ and $0.000$ at
+$L{=}10$, a two-token increase in effective length with every position in range.
+\nope{} and ALiBi, run under the identical protocol, retain $0.78$ and $0.92$. The
+position-range account therefore cannot be the whole story; something changes
+between $L{=}8$ and $L{=}10$ that is not the set of positions.
+
+\input{sections/tab_padded}
+
+\subsection{The failure is a stop, not a computation}
+\label{sec:stop}
+
+Exact match is a conjunction over $L$ tokens, so it cannot say whether the model
+computed eight tokens and stopped or computed ten and got them wrong.
+Per-output-position accuracy separates the two, and the profile is unmistakable
+(\figref{fig:profile}a). For the four truncating codes accuracy is $1.00$ at every
+output position up to the eighth and exactly $0.00$ from the ninth; \nope{} and
+ALiBi decay gently instead. At $L{=}10$ this is not a subtle trend: token accuracy
+is $0.800$ for sin, $0.797$ for $q/k$-absolute and $0.800$ for rotary, which is
+eight correct tokens out of ten, to three decimals.
+
+The model is not failing to compute the ninth token; it is declining to emit it.
+\figref{fig:profile}b shows the EOS probability at each output position. For sin it
+is below $0.01$ for the first eight positions and $1.00$ at the ninth, where it
+stays; \nope{} and ALiBi never exceed $0.1$ there. The mean stop position
+(\tabref{tab:padded}, last column of each block) is $8.0$ for all four truncating
+codes at every test length, and $9.9$ and $10.7$ for \nope{} at $L{=}10$ and $12$.
 
 \begin{figure}[t]
 \centering
-\includegraphics[width=\textwidth]{../figures/fig1_curves.pdf}
-\caption{Exact-match accuracy versus test length, one panel per task, mean over
-seeds with $\pm$1 s.d. The dotted line marks the training length. Learned,
-sinusoidal and rotary codes coincide numerically, so they are drawn as one curve;
-all three fall to zero at the first length beyond training. \nope{} instead
-decays gradually on the three tasks it can extrapolate at all, and fails on the
-remaining two. Tasks are ordered by length-coupling, coupled ones marked $*$.}
-\label{fig:curves}
+\includegraphics[width=0.62\textwidth]{../figures/fig_decomp.pdf}
+\caption{Exact match, token accuracy and forced-length accuracy at $L{=}10$, copy.
+The truncating codes score $0.00$ exact match on content that is $80\%$
+correct, and recover to $0.91$--$1.00$ once generation cannot terminate early.
+Black marks at zero indicate a measured zero.}
+\label{fig:decomp}
 \end{figure}
 
-\paragraph{A task-side explanation does not fit.} Before settling on the lookup
-account we tested the most natural alternative: that the effect is organised by
-whether a task's positional rule is written in terms of $L$ (\secref{sec:method}).
-Under that account the ranking of encodings should reverse between classes, with
-\nope{} losing its advantage on the coupled tasks. It does not. \nope{} is at or
-near the top of every task, and the spread between the best and worst encoding is
-$0.34$ (copy), $0.76$ (sort) and $0.29$ (reverse)---larger on the decoupled side
-($0.37$ mean) than the coupled side ($0.15$). What the data do show is that
-heterogeneity is real: a two-way ANOVA treating seed as a replicate ($n{=}50$)
-gives a task$\times$encoding interaction of $F(16,25)=32.3$, $p<10^{-3}$,
-$\eta_p^2=0.95$. Encodings do behave differently across tasks; the difference is
-just not organised by coupling. We report this because it cuts against the
-explanation we set out to test, and because a null interaction would have been a
-weaker finding. The test treats seeds as independent replicates, an approximation
-that if anything understates the residual variance.
+Forcing the length confirms it (\figref{fig:decomp}). With the EOS logit masked at
+every answer position, the same checkpoints score $0.93$ (sin), $0.91$
+($q/k$-absolute) and $1.00$ (rotary) token accuracy at $L{=}10$, against exact match
+$0.00$ for all three. Rotary is the extreme case: forced-length accuracy $0.996$ at
+$L{=}10$ and $0.984$ at $L{=}12$, indistinguishable from \nope{}, while exact match
+is $0.00$ at both. For that code the entire sequence-level failure is the stop
+decision.
 
-\paragraph{Where every method fails, the obstacle is not positional.} On
-prefix-XOR and swap-halves, \emph{every} condition including \nope{} scores at or
-below $0.01$ despite reaching $\ge 0.998$ in-distribution. The obstacle there is
-the difficulty of representing the underlying algorithm in a length-invariant way,
-the phenomenon studied by \citet{zhou2023what}, and no choice of positional
-encoding can address it. Keeping these tasks in the battery is what makes that
-visible: it bounds what any PE intervention could achieve.
+Two caveats belong here rather than in a limitations section. First, content is not
+untouched for the additive codes: forced-length accuracy is $0.93$ for sin, $0.91$
+for $q/k$-absolute and $0.83$ for learned, against $0.99$ for \nope{}, so additive
+position codes cost between six and sixteen points of token accuracy at $L{=}10$ on
+top of the truncation. Termination dominates the sequence-level score but does not
+explain all of it. Second, at $L{=}16$ rotary's
+stop behaviour becomes erratic---mean stop position $2.2$ across the two seeds, with
+the runs disagreeing---so we make no claims about rotary beyond $L{=}12$ in this
+protocol.
+
+\subsection{Which codes truncate}
+\label{sec:which}
+
+The truncating set is $\{\text{learned}, \text{sin}, \text{rotary},
+q/k\text{-absolute}\}$, the non-truncating set $\{\nope{}, \text{ALiBi}\}$. Two
+explanations available in the literature are ruled out by this partition.
+
+\emph{Not the injection site.} Every absolute code in the standard battery enters
+at the residual stream, and the only codes at $q/k$ or at the logits are relative,
+so site and absoluteness are perfectly confounded there. The $q/k$-absolute
+condition breaks the confound: the same fixed sinusoid, linearly projected into
+queries and keys instead of added to representations. It truncates in exactly the
+same place ($\mathrm{stop}{=}8.0$; token accuracy $0.797$ versus $0.800$;
+forced-length $0.905$ versus $0.929$). Moving an absolute code between sites changes
+nothing measurable.
+
+\emph{Not absoluteness, and not relativity either.} Rotary is relative by
+construction---$\langle q_i,k_j\rangle$ depends on $i-j$ alone---and it truncates.
+Relative coding is therefore not sufficient for extrapolation, contrary to the usual
+summary of the relative-versus-absolute literature, and absoluteness is not
+necessary for truncation. What the two sets share is a property of the
+\emph{boundary} rather than of the code's geometry: sin, learned, rotary and
+$q/k$-absolute each let the model name an output position exactly---by an index, or
+by an absolute rotation applied at a known index---so the end of the answer is an
+address it can look up. \nope{} can name no position, and ALiBi can only compare
+distances, which order output positions without labelling them; neither can place a
+boundary at a chosen index, and neither truncates.
+
+\subsection{The boundary follows the training length}
+\label{sec:moves}
+
+If the stop is addressed rather than computed, it should move when the training
+length moves. Training sin with $L_{\mathrm{tr}}{=}12$ gives prefix length $12$ at
+$L{=}14$, $16$ and $18$---stop position $12$ at each---while $L{=}10$ and $12$ are
+exactly correct, being in distribution (\figref{fig:profile}c). The boundary tracks
+$L_{\mathrm{tr}}$, not any property of the position range, and its length equals the
+answer segment the model was trained to produce.
+
+Training on several lengths sharpens the contrast rather than removing it. With
+$L_{\mathrm{tr}}\in\{6,8,10\}$ sampled uniformly, sinusoidal copy is perfect at
+$4$, $6$, $8$ and $10$, and $0.00$ at $L{=}12$, the first unseen length, in both
+seeds. \nope{} under the identical schedule reaches $0.99$ at $L{=}12$ and $0.42$
+at $L{=}16$. A mixture over lengths supplies the absolute code with one boundary per
+length---it does not teach where to stop---while a model with no addressable
+boundary simply extrapolates through the unseen length. The difference between the
+two codes is therefore not a difference in training data, which is identical here,
+but in whether a stop can be encoded as a constant.
+
+\subsection{Removing the boundary reverses the ranking}
+\label{sec:noeos}
+
+The stop account makes a causal prediction: remove the EOS token from training
+altogether, so that every target is a content token and no boundary is ever placed,
+and the codes should converge. They do---and past that. \figref{fig:noeos} reports
+the result. Under no-EOS training, rotary copy is perfect at every length we test:
+$1.00$ exact match at $L{=}8$, $10$, $12$ and $16$, in both seeds. \nope{} under
+the same training reaches $0.94$ at $L{=}10$, $0.13$ at $L{=}12$ and $0.00$ at
+$L{=}16$, with token accuracy $0.43$ there. Sinusoidal sits between, at $0.54$ at
+$L{=}10$ with token accuracy $0.96$.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.55\textwidth]{../figures/fig_noeos.pdf}
+\caption{Exact match with EOS supervision (dashed) and without it (solid), copy,
+mean of two seeds. Removing the boundary lifts every code and reverses the order:
+rotary reaches $1.00$ at $L{=}16$, twice the training length, while \nope{} falls to
+$0.00$. The no-EOS models are evaluated at a fixed output length by construction,
+which is the point of the comparison.}
+\label{fig:noeos}
+\end{figure}
+
+So the ranking that motivates the no-PE advice reverses when the termination
+decision is removed: the code that ``cannot extrapolate'' extrapolates furthest, and
+the code that is recommended for extrapolation is the one that degrades. We do not
+claim rotary is generally better than \nope{}---we test copying, at one model size,
+with two seeds---but the direction of this result is not ambiguous, and it is not
+what an out-of-distribution-position story predicts.

@@ -1,100 +1,97 @@
 /-
-  Mechanised definitions for "Explicit Positional Encodings Turn Length
-  Generalisation into Lookup".
+  Mechanised definitions for "The Answer Stops at Eight: Termination, Not
+  Position Range, Drives Length-Generalisation Failure".
 
-  What is formalised here: the definitions of *positional rule*,
-  *length-coupled*, *length-decoupled* and *position-free*, and a
-  machine-checked classification of the five tasks in the paper.
+  What is formalised here:
+    * the three sites at which position can enter a causal attention layer, and
+      the kind of code each site can carry;
+    * the fact that no encoding in the paper's battery is both absolute and at
+      the logits site -- the cell that the softmax makes empty;
+    * the definitions of *truncation* and *addressable boundary*, and the
+      machine-checked claim that the addressable codes are exactly the ones the
+      paper observes truncating.
 
-  What is NOT formalised here: the empirical claims (the cliff, where it sits,
-  the padded protocol). Those are measurements, not theorems, and no proof
-  assistant can discharge them.
-
-  The formalisation is deliberately dependency-free: core Lean 4 only, no
-  Mathlib, so it builds in seconds on any machine and in CI.
+  What is NOT formalised: the empirical claims (where generation stops, what
+  happens when EOS supervision is removed). Those are measurements, not
+  theorems, and no proof assistant can discharge them. The algebraic identity
+  behind the empty cell -- that a bias constant along the key axis cancels in
+  the softmax -- is stated in the paper as Eq. (2) and is not mechanised here,
+  because doing it properly needs a real-closed field and this file is
+  deliberately dependency-free (core Lean 4, no Mathlib, builds in seconds).
 -/
 
-namespace PositionalLookup
+namespace StopsAtEight
 
-/-- The five tasks of the paper. -/
-inductive Task where
-  | copy
-  | prefixXor
-  | sort
-  | swapHalves
-  | reverse
+/-- Where positional information enters the attention computation. -/
+inductive Site where
+  | representation   -- h_i = e(x_i) + p_i
+  | qk               -- q_i, k_j modified by position
+  | logits           -- an additive bias B_ij
   deriving DecidableEq, Repr
 
-/-- The positional rule `ρ(i, L)`: the input positions that output token `i`
-    reads, given that the sequence has length `L`.
+/-- What the code can express: a per-index address, or a pairwise relation. -/
+inductive Kind where
+  | absolute
+  | relative
+  deriving DecidableEq, Repr
 
-    `sort` has no positional rule (which input supplies output `i` is decided by
-    the values, not by position); it is represented by the empty list, and
-    `sort_positionFree` below records that this is deliberate. -/
-def rule : Task → Nat → Nat → List Nat
-  | .copy,       i, _ => [i]
-  | .prefixXor,  i, _ => List.range (i + 1)
-  | .sort,       _, _ => []
-  | .swapHalves, i, L => [(i + L / 2) % L]
-  | .reverse,    i, L => [L - 1 - i]
+/-- An encoding from the paper's battery.
 
-/-- A task is *length-coupled* when its rule can differ between two lengths:
-    Definition 2 of the paper, existential form. -/
-def Coupled (t : Task) : Prop :=
-  ∃ i L L', rule t i L ≠ rule t i L'
+    `addressable` records whether the model can name an output index exactly at
+    generation time; it is the property the paper uses to predict truncation. -/
+structure Code where
+  name        : String
+  site        : Site
+  kind        : Kind
+  addressable : Bool
+  deriving DecidableEq, Repr
 
-/-- A task is *length-decoupled* when its rule is the same at every length:
-    the universal form. -/
-def Decoupled (t : Task) : Prop :=
-  ∀ i L L', rule t i L = rule t i L'
+/-- The battery: five encodings plus the `q/k`-absolute control. -/
+def codes : List Code :=
+  [ ⟨"nope",    .representation, .relative, false⟩
+  , ⟨"learned", .representation, .absolute, true⟩
+  , ⟨"sin",     .representation, .absolute, true⟩
+  , ⟨"qk_abs",  .qk,             .absolute, true⟩
+  , ⟨"rope",    .qk,             .relative, true⟩
+  , ⟨"alibi",   .logits,         .relative, false⟩
+  ]
 
-/-- A task is *position-free* when it has no positional rule at all. -/
-def PositionFree (t : Task) : Prop :=
-  ∀ i L, rule t i L = []
+/-- Truncation: the model stops before finishing the answer. -/
+def Truncates (c : Code) : Prop := c.addressable = true
 
-/-! ### Decoupled tasks: the rule never mentions `L` -/
+/-- An absolute code cannot act at the logits site: a bias that depends only on
+    the query index is constant along the key axis and cancels in the softmax.
+    Hence every logits code in the battery is relative. -/
+def noAbsoluteAtLogits : Bool :=
+  codes.all (fun c => !(c.site == Site.logits) || (c.kind == Kind.relative))
 
-theorem copy_decoupled : Decoupled .copy := by
-  intro i L L'
-  rfl
+theorem no_absolute_at_logits : noAbsoluteAtLogits = true := by decide
 
-theorem prefixXor_decoupled : Decoupled .prefixXor := by
-  intro i L L'
-  rfl
+/-- The encodings the paper observes stopping at `L_tr`. -/
+def truncating : List String :=
+  (codes.filter (fun c => c.addressable)).map (fun c => c.name)
 
-/-! ### Coupled tasks: two lengths give different answers for the same index -/
+theorem truncating_eq : truncating = ["learned", "sin", "qk_abs", "rope"] := by decide
 
-theorem reverse_coupled : Coupled .reverse := by
-  refine ⟨0, 4, 6, ?_⟩
+/-- The encodings the paper observes stopping at the true length. -/
+def nonTruncating : List String :=
+  (codes.filter (fun c => !c.addressable)).map (fun c => c.name)
+
+theorem non_truncating_eq : nonTruncating = ["nope", "alibi"] := by decide
+
+/-- The partition is cut by addressability, not by kind and not by site:
+    a relative code (`rope`) truncates and an absolute code at `q/k` truncates
+    exactly like one at the representation. -/
+theorem not_kind_cut :
+    (codes.filter (fun c => c.kind == Kind.relative)).length = 3 := by decide
+
+theorem not_site_cut :
+    (codes.filter (fun c => c.site == Site.representation)).length = 3 := by decide
+
+/-- A code at the `q/k` site carries an absolute kind, which is the condition
+    that breaks the confound in the standard battery. -/
+theorem qk_absolute_exists :
+    (codes.filter (fun c => c.site == Site.qk && c.kind == Kind.absolute)).length = 1 := by
   decide
 
-theorem swapHalves_coupled : Coupled .swapHalves := by
-  refine ⟨0, 4, 6, ?_⟩
-  decide
-
-/-! ### Position-free task -/
-
-theorem sort_positionFree : PositionFree .sort := by
-  intro i L
-  rfl
-
-/-! ### The classification is not vacuous
-
-  `Decoupled` and `Coupled` are not complements in general (a rule could depend
-  on `L` only for some indices). The two results below show that at least one
-  task inhabits each class, which is what makes the taxonomy in the paper
-  non-empty.
--/
-
-theorem exists_decoupled : ∃ t, Decoupled t := ⟨.copy, copy_decoupled⟩
-
-theorem exists_coupled : ∃ t, Coupled t := ⟨.reverse, reverse_coupled⟩
-
-/-- The paper's claim that `reverse` is *not* decoupled. This is the direction
-    that matters for the taxonomy: a coupled task must fail the universal form. -/
-theorem reverse_not_decoupled : ¬ Decoupled .reverse := by
-  intro h
-  have h1 := h 0 4 6
-  exact absurd h1 (by decide)
-
-end PositionalLookup
+end StopsAtEight

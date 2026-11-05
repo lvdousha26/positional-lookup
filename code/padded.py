@@ -73,7 +73,8 @@ def evaluate_padded(model, task, L, n=512, seed=1234):
 
 
 def train(task, pe, seed, steps=2000, L_train=8, eval_lens=(8, 10, 12, 16),
-          d=256, nlayer=4, nhead=8, batch=128, lr=5e-4, wd=1e-2):
+          d=256, nlayer=4, nhead=8, batch=128, lr=5e-4, wd=1e-2,
+          ckpt=None, verbose=True):
     dev = "cuda" if torch.cuda.is_available() else "cpu"
     if dev == "cuda":
         torch.backends.cuda.matmul.allow_tf32 = True
@@ -102,8 +103,16 @@ def train(task, pe, seed, steps=2000, L_train=8, eval_lens=(8, 10, 12, 16),
             for L in eval_lens:
                 rec["L%d" % L] = round(evaluate_padded(model, task, L), 4)
             curve.append(rec)
-            cells = " ".join(f"{k}={v}" for k, v in rec.items() if k != "step")
-            print(f"[{task:10s} {pe:8s} s{seed} pad] {step:5d}  {cells}", flush=True)
+            if verbose:
+                cells = " ".join(f"{k}={v}" for k, v in rec.items() if k != "step")
+                print(f"[{task:10s} {pe:8s} s{seed} pad] {step:5d}  {cells}", flush=True)
+
+    if ckpt:
+        import os
+        os.makedirs(os.path.dirname(ckpt), exist_ok=True)
+        torch.save({"state": model.state_dict(), "cfg":
+                    {"d": d, "nlayer": nlayer, "nhead": nhead, "pe": pe}},
+                   ckpt)
 
     return {"task": task, "pe": pe, "seed": seed, "pad": True, "T": T, "K": K,
             "steps": steps, "sec": round(time.time() - t0, 1), "curve": curve}

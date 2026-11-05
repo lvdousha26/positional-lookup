@@ -1,77 +1,56 @@
 \section{Discussion}
 \label{sec:discussion}
 
-\subsection{Why the failure is a cliff}
+\paragraph{What the comparison was measuring.} The ordering in \tabref{tab:main} is
+reproducible and, as a description of trained models under the usual recipe, correct.
+What it does not license is the inference that explicit codes compute worse. On copy
+the opposite holds: under a forced output length rotary reaches $0.996$ token
+accuracy at $L{=}10$ and $0.984$ at $L{=}12$ against $0.987$ and $0.877$ for \nope{},
+and with EOS removed from training rotary is perfect at $L{=}16$ while \nope{} falls
+to $0.43$. The standard protocol was measuring where models stop.
 
-A model that had learned ``copy the token at the same index'' would degrade
-gradually: the rule still holds at $L{=}10$. We observe no such degradation. With
-a learned, sinusoidal or rotary code, accuracy is $1.00$ at the training length
-and $0.00$ at the next one tested (\figref{fig:curves}). A cliff of this shape
-means the model did not learn the rule but something that replicates it at
-$L_{\mathrm{tr}}$ and is undefined elsewhere---a length-indexed table.
+\paragraph{Why the boundary lands on $L_{\mathrm{tr}}$.} A model trained at one
+length sees exactly $L_{\mathrm{tr}}$ answer tokens in every example. If it can
+address output positions, the rule ``emit EOS at index $L_{\mathrm{tr}}{+}1$'' is a
+single parameter that fits the training distribution perfectly and is simply
+undefined outside it; nothing in the objective penalises that. If it cannot address
+positions, the same rule is not representable, and the model must fall back on
+content or on a distance cue, both of which are fuzzier and later---which is what
+the \nope{} and ALiBi profiles in \figref{fig:profile} show. The asymmetry is not
+about the informativeness of the code but about whether a stop can be encoded as a
+constant.
 
-The obvious objection is that this is just the usual out-of-distribution story:
-positions beyond $2L_{\mathrm{tr}}$ were never seen. It is not, and the padded
-experiment is what shows it. Once every position occurs during training, a model
-relying on position would be fine; the learned and sinusoidal models are not
-($1.00 \to 0.00$ at $L{=}10$, \figref{fig:padded}). What runs out is not the
-position range but the length range, which is exactly what a table indexed by
-length would do.
+This is the mechanism behind the ``length attractor'' of \citet{newman2020eos}:
+they showed that models trained to predict EOS stratify hidden states by position
+and stall there, and we locate the consequence at the level of a cross-code
+comparison. It is also why a mixture over lengths does not help the absolute code
+(\secref{sec:moves}): the constant becomes a lookup with one entry per length, but
+it is still a lookup, and the entry for the test length does not exist.
 
-\subsection{The one exception, and what it points at}
+\paragraph{Relation to the no-PE recommendation.} \citet{kazemnejad2023impact}
+compare five encodings on ten tasks and find \nope{} best. Our \tabref{tab:main}
+reproduces that ordering on our tasks and our model size. The result here does not
+overturn their measurement; it reinterprets what it measures. On tasks where the
+answer has the same length as the input, an exact-match comparison is partly a
+comparison of how crisply each code can place a stop. The practical corollary is
+cheap: report forced-length accuracy alongside exact match, or evaluate with EOS
+masked, and the comparison becomes about computation again.
 
-ALiBi is the only scheme that survives partially---$0.91$ at $L{=}10$ on copy in
-the standard format, $0.87$ under padding, against $0.00$ for the other three. It
-is also the only scheme that adds position to the attention logits instead of to
-the token representation. This matters for the diagnosis rather than being a
-footnote: a bias on logits can be ignored by a head that does not need it, whereas
-a perturbation of the representation has to be compensated for. A length-indexed
-table can be written into a representation; it is much harder to write one into a
-logit offset that a head may simply not use.
+\paragraph{Why ALiBi is the exception in the standard table.} ALiBi is the only
+standard code that both leaves the residual stream alone and is unaddressable: its
+bias orders output positions by distance from the query without naming any of them.
+It therefore stops late and softly rather than at a constant, which is what its
+$0.92$ exact match at $L{=}10$ reflects. We would predict that any code with a
+monotone and unaddressable positional signal behaves similarly, and that ALiBi's
+advantage would shrink under no-EOS training---a prediction we did not test.
 
-We did not vary the injection site while holding the positional signal fixed, so
-this remains a hypothesis rather than a result. It is, however, a falsifiable one
-with an obvious next experiment, and it changes what the field should try next.
-
-\subsection{A task-side explanation we ruled out}
-
-Before settling on the lookup account we tested the most natural alternative from
-the task side: that the effect is organised by whether a task's positional rule is
-written in terms of $L$ (\secref{sec:method}). Under that account the ranking of
-encodings should reverse between classes, with \nope{} losing its advantage on the
-coupled tasks. It does not. The dispersion across encodings is if anything larger
-on the decoupled side ($0.37$) than the coupled side ($0.15$). What is real is
-heterogeneity: the task$\times$encoding interaction reaches $\eta_p^2=0.95$. The
-encodings do behave differently across tasks---just not along this axis. We report
-the failure because a null interaction would have been a weaker finding, and
-because we set out to test this explanation rather than to confirm it.
-
-\subsection{Two mundane explanations we ruled out}
-
-\paragraph{Insufficient fitting.} Every cell reaches at least $0.998$
-in-distribution accuracy before it is scored, and training loss is at or below
-$10^{-3}$. The models fit; the failures are extrapolation failures.
-
-\paragraph{Drift of the structural marker.} The \texttt{<SEP>} token sits at
-absolute position $L$ in the standard format, so it moves as $L$ changes. Pinning
-it to a fixed index does not rescue the sinusoidal model. This probe is subsumed
-by \figref{fig:padded}, which fixes the separator and shows the collapse
-unchanged.
-
-\subsection{What this means for practice}
-
-If an explicit code is harmful because its effect can be memorised, then searching
-for a more extrapolable absolute code is aimed at the wrong failure: the code's
-numerical behaviour at large positions is irrelevant if the solution learned is a
-table whose extent is set by the training length. The two interventions that
-follow are to omit the code, or to put it somewhere a table cannot be written---as
-ALiBi does. Neither is established at the scale of pretrained language models, and
-our evidence for the second is one task and one run per condition.
-
-\subsection{Where this leaves the aggregate-ranking critique}
-
-The premise survives and the remedy does not. A ranking aggregated over tasks does
-hide a strong interaction ($\eta_p^2=0.95$), so the methodological worry is real.
-But the conditioning variable we proposed carries no predictive power, and the
-account that does fit---length-indexed lookup---is not a property of the task at
-all. The axis we were looking for is probably not on the task side.
+\paragraph{What this does not show.} We study copying with a 3.2M-parameter model,
+two seeds, and one training length per condition. \emph{sort}, \emph{reverse} and
+\emph{prefix-XOR} are in \tabref{tab:main} but not in the decomposition, and the
+permutation tasks may not decompose the same way, since a truncated answer there is
+wrong at every position rather than at the tail. We also did not test whether the
+effect survives scale, pretraining, or natural language, where answers rarely have
+the same length as inputs and the boundary is cued by content rather than by a
+count. The claim we are prepared to defend is the narrow one: on copy-like
+same-length tasks, at this scale, the cross-code ranking on exact match is dominated
+by termination, and it reverses when termination is removed.

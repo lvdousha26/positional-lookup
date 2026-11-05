@@ -1,25 +1,18 @@
-Explicit positional encodings are widely held to spoil length generalisation
-because they place the model at absolute positions it never saw in training. We
-argue that this diagnosis is wrong, and offer a simpler one: an explicit code lets
-the model adopt a \emph{length-indexed lookup} that is exact at the training length
-and undefined everywhere else. The distinction is operational---if the failure is
-an out-of-distribution position, a better-behaved absolute code can fix it; if it
-is a table, it cannot, because the table's extent is set by the training length.
-
-The two accounts are not separable in the usual protocol: a sequence of $L$ tokens
-occupies $2L+1$ positions, so ``position beyond the trained range'' and ``length
-beyond the trained length'' become true at the same moment. We separate them by
-fixing the total token count at 41 and padding every example, so all 41 positions
-occur during training and only the effective length varies. With no unseen
-position left to blame, learned and sinusoidal codes still collapse from $1.00$ at
-$L{=}8$ to $0.00$ at $L{=}10$, while \nope{} holds $0.79$ and ALiBi $0.87$ under
-the identical protocol.
-
-In a controlled $5\times5$ study where every cell first reaches $0.998$
-in-distribution accuracy, we also reject the most natural task-side explanation---
-that the effect is organised by whether a task's positional rule depends on the
-sequence length---while confirming that an encoding$\times$task interaction is
-strong ($\eta_p^2=0.95$). One exception constrains the mechanism further: ALiBi,
-the only scheme that adds position to attention logits rather than to the token
-representation, is also the only one that partially survives. Explicit position is
-not harmful in itself; harmful is putting it where it can be memorised.
+A decoder trained on sequences of length eight fails on sequences of length
+sixteen, even when the task is copying. That failure is usually attributed to
+positional encodings (PEs): explicit codes place the model at positions it never
+saw, and removing them is reported to extrapolate better. We show that this
+comparison is confounded by a different decision---where to emit the
+end-of-sequence token. With an explicit code the model learns to terminate at
+exactly the training length, with EOS probability $1.00$ at that position, so every
+longer answer is truncated there; sequence exact match then reports $0.00$ for a
+model that computes almost everything correctly. Under a forced output length the
+same checkpoints recover $0.91$--$0.99$ token accuracy, and rotary reaches $1.00$.
+Removing EOS supervision altogether reverses the ranking: rotary copy is perfect at
+$L{=}16$, twice the training length, while \nope{} degrades to $0.43$ token
+accuracy. The collapse is therefore not about position ranges---a protocol in which
+all positions occur in training does not prevent it---and not about where the code
+enters the network: an absolute code injected at $q/k$ behaves identically to one
+in the residual stream. It is about addressability of the answer boundary. Exact
+match ranks PEs partly by termination policy, and we recommend reporting
+forced-length accuracy beside it.

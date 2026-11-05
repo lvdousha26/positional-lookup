@@ -27,7 +27,11 @@ import matplotlib.pyplot as plt
 from matplotlib.colors import LinearSegmentedColormap
 from matplotlib.patches import Patch
 
-from arlib import COUPLED, PES, TASKS
+# Notebook-local copies of the task list: importing arlib would pull in torch and
+# compete with the training jobs for the (small) GPU for no reason.
+TASKS = ("copy", "prefix_xor", "sort", "swap_halves", "reverse")
+PES = ("nope", "learned", "sin", "rope", "alibi")
+COUPLED = {"swap_halves", "reverse"}
 
 LENGTHS = (8, 10, 12, 16, 20)
 FIGDIR = "../figures"
@@ -299,46 +303,345 @@ def fig_teaser(summary):
 
 
 # ---------------------------------------------------------------- fig: padded
-def fig_padded():
-    """The discriminating test: total length fixed, so every position is seen."""
+def _padded_runs(task="copy"):
+    """Mean over seeds of the fixed-length protocol, keyed by encoding."""
     import glob
-
-    runs = {}
-    for p in glob.glob("../results/padded_copy_*.json"):
+    acc = {}
+    for p in glob.glob(f"../results/padded/{task}_*_s*.json"):
         r = json.load(open(p))
-        runs[r["pe"]] = r["curve"][-1]
+        acc.setdefault(r["pe"], []).append(r["curve"][-1])
+    out = {}
+    for pe, runs in acc.items():
+        keys = [k for k in runs[0] if k.startswith("L")]
+        out[pe] = {k: float(np.mean([r[k] for r in runs])) for k in keys}
+        out[pe]["_sd"] = {k: float(np.std([r[k] for r in runs])) for k in keys}
+    return out
 
+
+def fig_padded():
+    """Every position is seen in training; only the effective length varies."""
+    runs = _padded_runs("copy")
     Ls = [8, 10, 12, 16]
-    fig, ax = plt.subplots(figsize=(3.5, 2.6))
-    style = {"nope": (C_NOPE, "o", "NoPE"),
-             "alibi": (C_ALIBI, "D", "ALiBi"),
-             "sin": (C_SIN, "s", "sin"),
-             "learned": (C_LEARNED, "^", "learned")}
 
-    # shading convention borrowed from Delétang et al. (ICLR 2023, Fig. 2):
-    # the region right of the training range is where generalisation is measured.
+    # sin and qk_abs are the same code at two different sites; if they coincide
+    # to within noise they are drawn as one line, because there is one fact.
+    same = ("sin" in runs and "qk_abs" in runs and
+            all(abs(runs["sin"][k] - runs["qk_abs"][k]) < 0.02 for k in runs["sin"]
+                if k.startswith("L")))
+
+    style = [("nope", C_NOPE, "o", "NoPE"),
+             ("alibi", C_ALIBI, "D", "ALiBi (relative, logits)"),
+             ("rope", C_ROPE, "^", "RoPE (relative, $q/k$)")]
+    if same:
+        style.append(("sin", C_COLLAPSED, "s", "absolute (repr. or $q/k$)"))
+    else:
+        style += [("sin", C_SIN, "s", "sin (absolute, rep.)"),
+                  ("qk_abs", C_LEARNED, "v", "absolute, $q/k$")]
+
+    fig, ax = plt.subplots(figsize=(3.55, 2.55))
     ax.axvspan(8, max(Ls) + 0.4, color="#f2f2f2", zorder=0)
     ax.axvline(8, color="#C0504D", lw=1.1, ls=(0, (4, 2)), zorder=1)
-    ax.text(max(Ls) - 0.2, 1.06, "generalisation", fontsize=6.2,
-            color="#8a8a8a", va="top", ha="right")
 
-    for pe, (col, mk, lab) in style.items():
+    for pe, col, mk, lab in style:
         if pe not in runs:
             continue
-        ys = [runs[pe].get("L%d" % L, float("nan")) for L in Ls]
-        ax.plot(Ls, ys, "-", color=col, marker=mk, ms=3.8, lw=1.5,
-                mfc="white", mew=0.9, label=lab, zorder=3)
+        ys = [runs[pe]["L%d" % L] for L in Ls]
+        sd = [runs[pe]["_sd"]["L%d" % L] for L in Ls]
+        ax.errorbar(Ls, ys, yerr=sd, color=col, marker=mk, ms=3.6, lw=1.5,
+                    mfc="white", mew=0.9, capsize=1.6, elinewidth=0.6,
+                    label=lab, zorder=3)
 
     ax.set_xlabel("effective length $L$")
     ax.set_ylabel("exact-match acc.")
     ax.set_xticks(Ls)
     ax.set_xlim(7.2, max(Ls) + 0.4)
     ax.set_ylim(-0.05, 1.10)
-    ax.legend(frameon=False, fontsize=7, loc="center right", handlelength=1.5,
-              labelspacing=0.35)
+    ax.legend(frameon=False, fontsize=6.6, loc="center right", handlelength=1.4,
+              labelspacing=0.32)
     fig.tight_layout()
     for ext in ("pdf", "png"):
         fig.savefig(os.path.join(FIGDIR, f"fig0_padded.{ext}"), bbox_inches="tight")
+    plt.close(fig)
+
+
+def fig_injection():
+    """Same site, different kind -- and the cell that cannot exist."""
+    runs = _padded_runs("copy")
+    sites = [("representation", "rep", "sin"),
+             ("$q/k$", "qk", "qk_abs"),
+             ("attn. logits", "logits", None)]
+    rel_at = {"rep": None, "qk": "rope", "logits": "alibi"}
+
+    fig, ax = plt.subplots(figsize=(3.35, 2.35))
+    w = 0.34
+    xs = np.arange(len(sites))
+
+    for i, (lab, key, abs_pe) in enumerate(sites):
+        if abs_pe and abs_pe in runs:
+            v = runs[abs_pe]["L10"]
+            ax.bar(i - w / 2, v, w, color="#C0504D", edgecolor="none")
+            ax.text(i - w / 2, v + 0.035, f"{v:.2f}", ha="center", fontsize=6.2,
+                    color="#7a2b28")
+        else:
+            # an additive bias that is constant along the key axis is removed by
+            # the softmax, so no absolute code can act at this site
+            ax.bar(i - w / 2, 0.015, w, facecolor="none", edgecolor="#9a9a9a",
+                   hatch="////", lw=0.7)
+            ax.text(i - w / 2, 0.10, "n/a", ha="center", fontsize=6.2,
+                    color="#7a7a7a", style="italic")
+
+        rel_pe = rel_at[key]
+        if rel_pe and rel_pe in runs:
+            v = runs[rel_pe]["L10"]
+            ax.bar(i + w / 2, v, w, color="#2F6FA8", edgecolor="none")
+            ax.text(i + w / 2, v + 0.035, f"{v:.2f}", ha="center", fontsize=6.2,
+                    color="#1d4568")
+
+    ax.set_xticks(xs, [s[0] for s in sites])
+    ax.set_ylim(0, 1.12)
+    ax.set_ylabel("accuracy at $L{=}10$")
+    ax.set_xlabel("where the code enters")
+    ax.legend(handles=[Patch(facecolor="#C0504D", label="absolute code"),
+                       Patch(facecolor="#2F6FA8", label="relative code")],
+              frameon=False, fontsize=6.6, loc="upper left", ncol=1,
+              handlelength=1.1, labelspacing=0.3)
+    fig.tight_layout()
+    for ext in ("pdf", "png"):
+        fig.savefig(os.path.join(FIGDIR, f"fig_site.{ext}"), bbox_inches="tight")
+    plt.close(fig)
+
+
+def fig_multilen():
+    """Failure tracks the set of trained lengths, not the largest position."""
+    import glob
+    runs = {}
+    for p in glob.glob("../results/multilen/*.json"):
+        r = json.load(open(p))
+        name = "single" if len(r["lens"]) == 1 else "multi"
+        runs.setdefault((r["pe"], name), []).append(r["curve"][-1])
+    if not runs:
+        return
+
+    Ls = [4, 6, 8, 10, 12, 16]
+    fig, ax = plt.subplots(figsize=(3.45, 2.5))
+    style = {("sin", "single"): (C_COLLAPSED, "s", "absolute, $L_{tr}{=}8$"),
+             ("sin", "multi"): (C_COLLAPSED, "D", "absolute, $L_{tr}\\in\\{6,8,10\\}$"),
+             ("nope", "single"): (C_NOPE, "o", "NoPE, $L_{tr}{=}8$"),
+             ("nope", "multi"): (C_NOPE, "P", "NoPE, $L_{tr}\\in\\{6,8,10\\}$")}
+    for key, (col, mk, lab) in style.items():
+        if key not in runs:
+            continue
+        rs = runs[key]
+        ys = [float(np.mean([r["L%d" % L] for r in rs])) for L in Ls]
+        dashed = key[1] == "multi"
+        ax.plot(Ls, ys, "-" if not dashed else "--", color=col, marker=mk, ms=3.4,
+                lw=1.4, mfc="white", mew=0.9, label=lab, zorder=3)
+
+    ax.axvspan(10, max(Ls) + 0.5, color="#f2f2f2", zorder=0)
+    ax.set_xlabel("test length $L$")
+    ax.set_ylabel("exact-match acc.")
+    ax.set_xticks(Ls)
+    ax.set_xlim(3.4, max(Ls) + 0.5)
+    ax.set_ylim(-0.05, 1.10)
+    ax.legend(frameon=False, fontsize=6.2, loc="center left", handlelength=1.5,
+              labelspacing=0.3)
+    fig.tight_layout()
+    for ext in ("pdf", "png"):
+        fig.savefig(os.path.join(FIGDIR, f"fig_multilen.{ext}"), bbox_inches="tight")
+    plt.close(fig)
+
+
+def _eval_runs(task="copy"):
+    """Mean over seeds of the per-position analysis, keyed by encoding."""
+    import glob
+    acc = {}
+    for p in glob.glob(f"../results/padded_eval/{task}_*_s*.json"):
+        r = json.load(open(p))
+        acc.setdefault(r["pe"], []).append(r)
+    out = {}
+    for pe, rs in acc.items():
+        out[pe] = {}
+        for L in rs[0]["L"]:
+            out[pe][L] = {k: float(np.mean([r["L"][L][k] for r in rs]))
+                          for k in ("seq", "tok", "tok_oracle", "stop")}
+            out[pe][L]["per_pos"] = np.mean(
+                [r["L"][L]["per_pos"] for r in rs], axis=0)
+            out[pe][L]["eos"] = np.mean([r["L"][L]["eos"] for r in rs], axis=0)
+    return out
+
+
+def fig_profile():
+    """(a) accuracy by output index at L=10; (b) emitted EOS; (c) the step moves."""
+    ev = _eval_runs("copy")
+    L = "10"
+    n = 10
+    xs = np.arange(1, n + 1)
+
+    fig, axes = plt.subplots(1, 3, figsize=(7.0, 2.25))
+
+    # (a) all five codes at the same test length
+    ax = axes[0]
+    style = [("nope", C_NOPE, "o", "NoPE"), ("alibi", C_ALIBI, "D", "ALiBi"),
+             ("sin", C_COLLAPSED, "s", "sin"), ("qk_abs", "#FF9500", "v", "qk-abs"),
+             ("rope", C_ROPE, "^", "RoPE")]
+    for pe, col, mk, lab in style:
+        if pe not in ev:
+            continue
+        ax.plot(xs, ev[pe][L]["per_pos"], "-", color=col, marker=mk, ms=2.6,
+                lw=1.2, mfc="white", mew=0.7, label=lab)
+    ax.axvline(8.5, color="#cccccc", lw=0.8, ls=(0, (2, 2)))
+    ax.set_xlabel("output position $k$")
+    ax.set_ylabel("accuracy at $L{=}10$")
+    ax.set_ylim(-0.05, 1.08)
+    ax.set_xticks([1, 5, 10])
+    ax.legend(frameon=False, fontsize=5.6, loc="lower left", handlelength=1.2,
+              labelspacing=0.25, ncol=2, columnspacing=0.8)
+
+    # (b) the mechanism: EOS probability at the same positions
+    ax = axes[1]
+    for pe, col, mk, lab in [("sin", C_COLLAPSED, "s", "sin"),
+                             ("nope", C_NOPE, "o", "NoPE"),
+                             ("alibi", C_ALIBI, "D", "ALiBi")]:
+        if pe not in ev:
+            continue
+        ax.plot(xs, ev[pe][L]["eos"], "-", color=col, marker=mk, ms=2.6, lw=1.2,
+                mfc="white", mew=0.7, label=lab)
+    ax.axvline(8.5, color="#cccccc", lw=0.8, ls=(0, (2, 2)))
+    ax.set_xlabel("output position $k$")
+    ax.set_ylabel("$P(\\mathrm{EOS})$")
+    ax.set_ylim(-0.05, 1.08)
+    ax.set_xticks([1, 5, 10])
+    ax.legend(frameon=False, fontsize=5.8, loc="upper left", handlelength=1.2,
+              labelspacing=0.25)
+
+    # (c) move the training length, move the step
+    ax = axes[2]
+    xs16 = np.arange(1, 17)
+    if "sin" in ev:
+        ax.plot(xs16, ev["sin"]["16"]["per_pos"], "-s", color=C_COLLAPSED, ms=2.6,
+                lw=1.2, mfc="white", mew=0.7, label="sin, $L_{tr}{=}8$")
+    rows = sorted(__import__("glob").glob("../results/rows/copy_sin_L12_s0.json"))
+    if rows:
+        r = json.load(open(rows[0]))
+        ax.plot(xs16, r["L"]["16"]["per_pos"], ":^", color="#7a2b28", ms=2.6,
+                lw=1.1, mfc="white", mew=0.7, label="sin, $L_{tr}{=}12$")
+    ax.axvline(8.5, color="#cccccc", lw=0.8, ls=(0, (2, 2)))
+    ax.set_xlabel("output position $k$")
+    ax.set_ylabel("accuracy at $L{=}16$")
+    ax.set_ylim(-0.05, 1.08)
+    ax.set_xticks([1, 8, 16])
+    ax.legend(frameon=False, fontsize=5.8, loc="lower left", handlelength=1.2,
+              labelspacing=0.25)
+
+    fig.tight_layout()
+    for ext in ("pdf", "png"):
+        fig.savefig(os.path.join(FIGDIR, f"fig_profile.{ext}"), bbox_inches="tight")
+    plt.close(fig)
+
+
+def fig_decomp():
+    """Exact match, token accuracy, and forced-length accuracy at L=10."""
+    ev = _eval_runs("copy")
+    codes = [("nope", "NoPE"), ("alibi", "ALiBi"), ("sin", "sin"),
+             ("qk_abs", "qk-abs"), ("rope", "RoPE")]
+    codes = [(c, lab) for c, lab in codes if c in ev]
+    L = "10"
+
+    fig, ax = plt.subplots(figsize=(4.0, 2.25))
+    w = 0.26
+    xs = np.arange(len(codes))
+    cols = {"seq": "#c9c9c9", "tok": "#7fa8c9", "tok_oracle": "#2F6FA8"}
+    labels = {"seq": "exact match", "tok": "token accuracy",
+              "tok_oracle": "forced length"}
+
+    for i, (k, off) in enumerate([("seq", -w), ("tok", 0.0), ("tok_oracle", w)]):
+        vals = [ev[c][L][k] for c, _ in codes]
+        ax.bar(xs + off, vals, w, color=cols[k], edgecolor="none", label=labels[k])
+        for x, v in zip(xs + off, vals):
+            if v < 0.005:      # a measured zero, not a missing measurement
+                ax.plot([x - w / 2, x + w / 2], [0.008, 0.008], color="#333333",
+                        lw=1.6, solid_capstyle="butt")
+            ax.text(x, v + 0.015, f"{v:.2f}", ha="center", fontsize=4.9,
+                    va="bottom", color="#333333")
+
+    ax.set_xticks(xs, [lab for _, lab in codes])
+    ax.set_ylim(0, 1.12)
+    ax.set_ylabel("score at $L{=}10$")
+    ax.legend(frameon=False, fontsize=6.2, ncol=3, loc="upper center",
+              handlelength=1.1, columnspacing=1.0, bbox_to_anchor=(0.5, 1.16))
+    fig.tight_layout()
+    for ext in ("pdf", "png"):
+        fig.savefig(os.path.join(FIGDIR, f"fig_decomp.{ext}"), bbox_inches="tight")
+    plt.close(fig)
+
+
+def fig_stopbound():
+    """Where does generation stop, as a function of the test length?"""
+    ev = _eval_runs("copy")
+    Ls = [8, 10, 12]
+    xs = np.array(Ls)
+    fig, ax = plt.subplots(figsize=(3.3, 2.3))
+    style = {"nope": (C_NOPE, "o", "NoPE"), "alibi": (C_ALIBI, "D", "ALiBi"),
+             "sin": (C_COLLAPSED, "s", "sin"), "qk_abs": ("#FF2C00", "v", "qk-abs"),
+             "rope": (C_ROPE, "^", "RoPE")}
+    ax.plot([8, 14], [8, 14], ":", color="#bbbbbb", lw=1.0, zorder=1)
+    ax.text(12.5, 12.9, "correct stop", fontsize=6, color="#8a8a8a", rotation=42,
+            ha="center", va="center")
+    for pe, (col, mk, lab) in style.items():
+        if pe not in ev:
+            continue
+        ys = [ev[pe][str(L)]["stop"] for L in Ls]
+        ax.plot(Ls, ys, "-", color=col, marker=mk, ms=3.2, lw=1.3, mfc="white",
+                mew=0.8, label=lab)
+    ax.axhline(8, color="#cccccc", lw=0.6, ls=(0, (1, 2)))
+    ax.text(8.05, 7.2, "$L_{tr}$", fontsize=6, color="#9a9a9a")
+    ax.set_xlabel("test length $L$")
+    ax.set_ylabel("mean stop position")
+    ax.set_xticks(Ls)
+    ax.set_xlim(7.6, 12.4)
+    ax.set_ylim(0, 13.5)
+    ax.legend(frameon=False, fontsize=6.2, loc="lower right", ncol=2,
+              handlelength=1.3, columnspacing=0.9)
+    fig.tight_layout()
+    for ext in ("pdf", "png"):
+        fig.savefig(os.path.join(FIGDIR, f"fig_stop.{ext}"), bbox_inches="tight")
+    plt.close(fig)
+
+
+def fig_noeos():
+    """Train without an EOS token: is the gap still there?"""
+    import glob
+    noe = {}
+    for p in glob.glob("../results/noeos/*.json"):
+        r = json.load(open(p))
+        noe.setdefault(r["pe"], []).append(r)
+    if not noe:
+        return
+    ev = _eval_runs("copy")
+    Ls = [8, 10, 12, 16]
+    fig, ax = plt.subplots(figsize=(3.6, 2.85))
+    for pe, col, lab in [("nope", C_NOPE, "NoPE"), ("sin", C_COLLAPSED, "sin"),
+                         ("rope", C_ROPE, "RoPE")]:
+        if pe not in noe:
+            continue
+        ys = [float(np.mean([r["L"][str(L)]["seq"] for r in noe[pe]])) for L in Ls]
+        ax.plot(Ls, ys, "-", color=col, marker="o", ms=3.0, lw=1.3, mfc="white",
+                mew=0.7, label=f"{lab}, no EOS")
+        if pe in ev:
+            ys2 = [ev[pe][str(L)]["seq"] for L in Ls]
+            ax.plot(Ls, ys2, "--", color=col, lw=0.9, alpha=0.5,
+                    label=f"{lab}, with EOS")
+    ax.set_xlabel("test length $L$")
+    ax.set_ylabel("exact-match acc.")
+    ax.set_xticks(Ls)
+    ax.set_xlim(7.5, 16.5)
+    ax.set_ylim(-0.05, 1.10)
+    ax.legend(frameon=False, fontsize=5.9, ncol=3, loc="upper center",
+              handlelength=1.3, columnspacing=0.9, labelspacing=0.3,
+              bbox_to_anchor=(0.5, -0.16))
+    fig.tight_layout()
+    for ext in ("pdf", "png"):
+        fig.savefig(os.path.join(FIGDIR, f"fig_noeos.{ext}"), bbox_inches="tight")
     plt.close(fig)
 
 
@@ -349,6 +652,8 @@ def main():
     summary["coupled"] = summary["task"].isin(COUPLED)
 
     fig_padded()
+    fig_injection()
+    fig_multilen()
     fig_curves(df)
     fig_heatmap(df, summary)
     fig_spread(summary)
