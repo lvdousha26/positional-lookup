@@ -1,0 +1,90 @@
+\section{Introduction}
+\label{sec:intro}
+
+A Transformer trained on sequences of length eight will fail on sequences of
+length sixteen, even when the task is copying. The usual fix is to change the
+positional encoding (PE), a decision made before pretraining and expensive to
+reverse, so the diagnosis behind the current advice is worth getting right.
+
+That advice rests on a specific diagnosis: an explicit code assigns the model
+absolute positions, a longer sequence puts it at positions it never saw, and an
+embedding trained on positions $0..7$ is out of distribution at position $12$.
+Two research programmes follow. One removes the code entirely, on the evidence
+that a no-PE decoder extrapolates better than five alternatives across ten tasks
+\citep{kazemnejad2023impact}. The other keeps the code but tries to make it
+extrapolable---log-decaying biases \citep{chi2023dissecting},
+resolution-maximising relative codes \citep{sun2023length}, randomised position
+sampling \citep{ruoss2023randomized}, priming with long examples
+\citep{jelassi2023length}. Both are treatments for out-of-distribution positions.
+
+We propose that the diagnosis is wrong, and that the phenomenon is simpler. An
+explicit code does not merely place the model outside its training range; it lets
+the model adopt a solution that is \emph{indexed by sequence length}, exact at
+$L_{\mathrm{tr}}$ and undefined elsewhere. The difference is operational: if the
+failure is out-of-distribution positions, a better-behaved absolute code can fix
+it; if the failure is a lookup table, it cannot, because the table's extent is set
+by the training length, not by the code's numerical properties.
+
+The two hypotheses are not separable in the standard format, which is why the
+question has stayed open. A sequence of $L$ tokens occupies $2L+1$ positions, so
+``position beyond the trained range'' and ``length beyond the trained length''
+become true at exactly the same moment. Training at one length and testing longer
+confounds them by construction, and a probe that merely repeats this at a second
+training length confounds them again.
+
+We separate them by fixing the total number of tokens. Every example is padded to
+41 tokens with the separator at a fixed index, so all 41 positions occur in every
+training example---including the positions a longer test sequence will use---and
+only the number of \emph{effective} tokens varies. If the failure is
+out-of-distribution position, it should disappear. It does not
+(\figref{fig:padded}).
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.76\textwidth]{../figures/fig0_padded.pdf}
+\caption{Positions are not the variable. Every training example is padded to 41
+tokens with the separator pinned at a fixed index, so all 41 positions occur
+during training and only the effective length varies. The dashed red line marks
+the training length; everything to its right is measured at a length never
+trained on. With every position seen, learned and sinusoidal codes still fall
+from $1.00$ to $0.00$ between $L{=}8$ and $L{=}10$, while \nope{} holds $0.79$
+and ALiBi $0.87$. Copy task, one run per condition.}
+\label{fig:padded}
+\end{figure}
+
+With every position seen, learned and sinusoidal codes fall from $1.00$ to $0.00$
+between $L{=}8$ and $L{=}10$, while \nope{} holds $0.79$ and ALiBi $0.87$ under
+the same protocol. Position range is therefore not what runs out. The collapse is
+indexed by length.
+
+Two further results keep the account honest. First, we tested the most natural
+task-side alternative---that the effect is organised by whether a task's
+positional rule is written in terms of $L$---and it fails: across five tasks the
+ranking of encodings does not reverse between classes (\secref{sec:results}).
+The axis is not a property of the input--output relation. Second, one scheme
+behaves differently: ALiBi retains $0.91$ at $L{=}10$ on copy where the other
+three reach zero. ALiBi is the only encoding here that adds position to the
+attention logits rather than to the token representation---a place where a
+length-indexed table cannot be written. That is the positive half of the
+diagnosis, and it is what makes it actionable.
+
+\paragraph{What this changes.} If explicit position is harmful because it can be
+memorised, then the design question is not which code is most extrapolable but
+where position is allowed to enter. Our data do not settle that question---one
+exception is a lead, not a result---but they do remove the reason to keep
+searching for a better absolute code, and they explain why the search has
+repeatedly come up empty.
+
+\paragraph{Contributions.}
+\begin{enumerate}
+\item A diagnosis of why explicit positional encodings harm length generalisation:
+   they admit a length-indexed lookup, not merely an out-of-distribution position
+   (\secref{sec:results}).
+\item A discriminating test between the two accounts: a padded protocol that
+   fixes the total token count so that every position occurs in training and only
+   the effective length varies, plus a controlled $5\times5\times2$ study in which
+   every cell first reaches $0.998$ in-distribution accuracy (\secref{sec:setup}).
+\item The rejection of a task-side explanation for the same effect, and one
+   exception (ALiBi) that locates the mechanism at the injection site
+   (\secref{sec:discussion}).
+\end{enumerate}

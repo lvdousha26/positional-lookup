@@ -1,0 +1,46 @@
+\section{Limitations}
+\label{sec:limitations}
+
+\paragraph{Scale.} Our models have 3.2M parameters and are trained from scratch on
+synthetic sequence tasks. Nothing in our argument requires scale, but nothing in
+our experiments establishes that the same conditioning holds for pretrained
+language models, where positional codes interact with token distributions and
+with training that already spans many lengths. We regard the present study as a
+controlled test of a mechanism, not as a claim about frontier models.
+
+\paragraph{One training length.} All runs use $L_{\mathrm{tr}}{=}8$. A stronger
+version of our claim would show that the coupling classification predicts the
+\emph{shape} of the extrapolation curve across several training lengths, not just
+the sign of a difference at one. This is the most important extension we have not
+run.
+
+\paragraph{Online sampling.} Each step draws a fresh batch rather than sampling
+from a fixed finite training set. This removes memorisation as an explanation and
+equalises the number of examples across conditions, but it also makes the task
+easier than the fixed-train-set protocol used in some prior work, so absolute
+accuracies are not directly comparable across papers.
+
+\paragraph{Coverage of the taxonomy.} Five tasks is a small battery, and the
+position-free class is represented by a single task (sort). The two coupled
+tasks, while both length-dependent, differ in how the dependence enters
+(complement versus rotation), so we cannot separate ``coupled'' from ``coupled in
+this particular way''.
+
+\paragraph{Confound in the learned-APE condition.} At test lengths the learned
+embedding table is queried at positions never updated during training. This is
+faithful to how learned absolute codes behave in deployment, but it means the
+learned condition conflates ``absolute position is unhelpful'' with ``the
+untrained tail of a lookup table is unhelpful''. A variant with a
+length-extrapolable initialisation would separate the two; we did not run one.
+
+\paragraph{Statistical power.} Two seeds per cell leave only 25 residual degrees
+of freedom for the interaction test, and treating seeds as replicates is an
+approximation. The interaction we report is far from marginal
+($F(16,25)=32.3$), but the cell-level means it is computed from are noisy enough
+that we would not defend a claim about any single pairwise difference. A
+five-seed replication is the obvious next step and we have not run it.
+
+\paragraph{Behavioural evidence only.} We report accuracy, not mechanism. Claims
+about \emph{why} a coupled task is harder---whether models recover length from
+attention statistics, whether they implement a position-arithmetic circuit---would
+require probing or circuit analysis that we have not performed.

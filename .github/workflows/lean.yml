@@ -1,0 +1,19 @@
+name: Lean proofs
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  verify:
+    name: Verify formalisation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build and check proofs
+        uses: leanprover/lean-action@v1
+        with:
+          lake-package-directory: lean
+          use-github-cache: true

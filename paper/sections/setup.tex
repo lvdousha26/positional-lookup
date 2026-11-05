@@ -1,0 +1,79 @@
+\section{Experimental Setup}
+\label{sec:setup}
+
+\paragraph{Tasks.} All five tasks map a sequence of $L$ symbols from a
+10-symbol alphabet to an output sequence of the same length, formatted as
+\texttt{x\textsubscript{1..L} <SEP> y\textsubscript{1..L} <EOS>}. Cross-entropy
+is applied only to the output segment; accuracy is exact match over all $L$
+output tokens. Training uses $L_{\mathrm{tr}}=8$; evaluation uses
+$L\in\{8,10,12,16,20\}$, so $L{=}8$ measures in-distribution fit and the rest
+measure extrapolation.
+
+\paragraph{Positional encodings.} All five conditions are instantiations of
+\eqref{eq:attn}. \nope{} sets $p_i=0$, $B_{ij}=0$ and applies no rotation, so
+order is conveyed only by the causal mask. \emph{learned} absolute embeddings use
+$h_i=e(x_i)+p_i$ with $p_i\in\mathbb{R}^{d}$ trained, one vector per position.
+\emph{sin} uses the fixed sinusoid of \citet{vaswani2017attention},
+\begin{equation}
+p_{i,2k}=\sin\!\left(i\,\omega_k\right),\qquad
+p_{i,2k+1}=\cos\!\left(i\,\omega_k\right),\qquad
+\omega_k=10000^{-2k/d}.
+\label{eq:sin}
+\end{equation}
+\emph{rope} rotates queries and keys within each head,
+$q_i\mapsto R_{\Theta,i}\,q_i$ with $R_{\Theta,i}$ block-diagonal in
+$2\times2$ rotations of angle $i\theta_k$ and $\theta_k=10000^{-2k/d}$, so that
+$\langle q_i,k_j\rangle$ depends on $i-j$ alone \citep{su2024roformer}.
+\emph{alibi} leaves the residual stream untouched and sets
+\begin{equation}
+B_{ij}=-m_h\,(i-j),\qquad m_h=2^{-8h/H},
+\label{eq:alibi}
+\end{equation}
+for head $h\in\{1,\dots,H\}$ \citep{press2022train}. Four of these---\nope{}, learned absolute, rotary and
+ALiBi---appear in the five-way comparison of \citet{kazemnejad2023impact}. We
+substitute a fixed sinusoidal code for their T5-style bucketed relative bias
+\citep{raffel2020exploring}, so our battery overlaps with theirs rather than
+reproducing it; we record the substitution explicitly because it limits how
+directly the numbers can be compared across the two studies.
+
+\paragraph{Model.} A decoder-only Transformer with 4 layers, $d_{\mathrm{model}}
+{=}256$, 8 heads, pre-layered-norm blocks, GELU MLP with hidden width $4d$, and
+a tied output head: about 3.2M parameters. All PE variants use the same
+architecture and differ only in how position enters.
+
+\paragraph{Optimisation.} AdamW with learning rate $5\times10^{-4}$,
+$\beta=(0.9,0.98)$, weight decay $0.01$, batch size 128, 2000 steps, and a
+100-step linear warmup followed by cosine decay. Gradients are clipped to norm
+1.0. Each step draws a fresh batch from the task distribution rather than
+sampling from a fixed finite training set; every PE therefore sees the same
+number of i.i.d.\ examples, which removes memorisation of a particular training
+sample as an explanation for any difference we observe.
+
+\paragraph{Evaluation and the ``solved'' control.} For each length we evaluate
+512 fresh sequences with a fixed evaluation seed, so all conditions are scored on
+identical inputs. A condition is counted as \emph{solved} when in-distribution
+accuracy at $L{=}8$ reaches $0.95$. This control matters: extrapolation failure is
+only interpretable for models that learned the task in the first place, and
+without it a PE can appear to ``fail to extrapolate'' when it in fact failed to
+fit. We report unsolved conditions explicitly rather than dropping them silently.
+
+\paragraph{Seeds and aggregation.} Every cell of the $5\times5$ design is run
+with 2 random seeds. Our primary summary statistic is the \emph{extrapolation
+score},
+\begin{equation}
+\mathrm{ES}(\pi)=\frac{1}{|\mathcal{L}_{\mathrm{te}}|}
+\sum_{L\in\mathcal{L}_{\mathrm{te}}}\mathrm{Acc}_{L}(\pi),
+\qquad
+\mathcal{L}_{\mathrm{te}}=\{10,12,16,20\},
+\label{eq:es}
+\end{equation}
+where $\mathrm{Acc}_{L}(\pi)$ is the exact-match rate of encoding $\pi$ at test
+length $L$, averaged over seeds and restricted to solved runs. We report the
+spread across seeds alongside each mean, and we test the task$\times$PE
+interaction with the two-way model
+\begin{equation}
+\mathrm{ES}_{ijk}=\mu+\alpha_i+\beta_j+(\alpha\beta)_{ij}+\varepsilon_{ijk},
+\label{eq:anova}
+\end{equation}
+with task $i$, encoding $j$ and seed $k$ treated as a replicate. The residual
+degrees of freedom (25) are small and we interpret the test accordingly.

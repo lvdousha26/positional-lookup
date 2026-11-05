@@ -1,0 +1,50 @@
+
+50 runs, 5 tasks x 5 PEs x 2 seeds
+
+Extrapolation score (mean acc over L=10,12,16,20):
+pe            nope  learned  sin  rope  alibi
+task                                         
+copy         0.340      0.0  0.0   0.0  0.305
+prefix_xor   0.002      0.0  0.0   0.0  0.000
+sort         0.755      0.0  0.0   0.0  0.003
+swap_halves  0.000      0.0  0.0   0.0  0.000
+reverse      0.294      0.0  0.0   0.0  0.000
+
+In-distribution accuracy at L=8:
+pe            nope  learned  sin  rope  alibi
+task                                         
+copy         1.000      1.0  1.0   1.0  1.000
+prefix_xor   1.000      1.0  1.0   1.0  1.000
+sort         1.000      1.0  1.0   1.0  1.000
+swap_halves  0.998      1.0  1.0   1.0  0.999
+reverse      1.000      1.0  1.0   1.0  1.000
+
+Mean PE rank within task (1=best):
+pe           nope  learned   sin  rope  alibi
+task                                         
+copy          1.5     4.00  4.00  4.00   1.50
+prefix_xor    1.0     3.50  3.50  3.50   3.50
+sort          1.0     4.00  4.00  4.00   2.00
+swap_halves   3.0     3.00  3.00  3.00   3.00
+reverse       1.0     3.75  3.75  3.75   2.75
+
+PE spread per task (max-min):
+task
+copy           0.340
+prefix_xor     0.002
+sort           0.755
+swap_halves    0.000
+reverse        0.294
+  decoupled mean spread: 0.366
+  coupled   mean spread: 0.147
+
+Two-way ANOVA on ES (solved runs only):
+                   term     SS  df        F   p  eta2p
+          task (type I) 0.2000   4  35.9463 0.0 0.8519
+     pe (type I | task) 0.5813   4 104.4665 0.0 0.9435
+task x pe (interaction) 0.7191  16  32.3115 0.0 0.9539
+               residual 0.0348  25      NaN NaN    NaN
+
+NoPE rank: decoupled=1.17 coupled=2.00  (U=7.0, p=0.1178)
+
+figures -> ../figures

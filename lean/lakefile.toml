@@ -1,0 +1,6 @@
+name = "positional_lookup"
+version = "0.1.0"
+defaultTargets = ["PositionalLookup"]
+
+[[lean_lib]]
+name = "PositionalLookup"

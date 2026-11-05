@@ -1,0 +1,28 @@
+25 jobs, 1 worker(s)
+done  copy__nope__s1                     in=1.000 ext=0.000  82s
+done  copy__learned__s1                  in=1.000 ext=0.000  76s
+done  copy__sin__s1                      in=1.000 ext=0.000  220s
+done  copy__rope__s1                     in=1.000 ext=0.000  248s
+done  copy__alibi__s1                    in=1.000 ext=0.000  207s
+done  prefix_xor__nope__s1               in=1.000 ext=0.000  249s
+done  prefix_xor__learned__s1            in=1.000 ext=0.000  218s
+done  prefix_xor__sin__s1                in=1.000 ext=0.000  249s
+done  prefix_xor__rope__s1               in=1.000 ext=0.000  43s
+done  prefix_xor__alibi__s1              in=1.000 ext=0.000  30s
+done  sort__nope__s1                     in=1.000 ext=0.508  22s
+done  sort__learned__s1                  in=1.000 ext=0.000  22s
+done  sort__sin__s1                      in=1.000 ext=0.000  22s
+done  sort__rope__s1                     in=1.000 ext=0.000  36s
+done  sort__alibi__s1                    in=1.000 ext=0.000  27s
+done  swap_halves__nope__s1              in=0.998 ext=0.000  33s
+done  swap_halves__learned__s1           in=1.000 ext=0.000  22s
+done  swap_halves__sin__s1               in=1.000 ext=0.000  22s
+done  swap_halves__rope__s1              in=1.000 ext=0.000  27s
+done  swap_halves__alibi__s1             in=1.000 ext=0.000  25s
+done  reverse__nope__s1                  in=1.000 ext=0.000  23s
+done  reverse__learned__s1               in=1.000 ext=0.000  23s
+done  reverse__sin__s1                   in=1.000 ext=0.000  23s
+done  reverse__rope__s1                  in=1.000 ext=0.000  28s
+done  reverse__alibi__s1                 in=1.000 ext=0.000  27s
+
+total 2002s

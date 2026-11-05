@@ -1,0 +1,20 @@
+\section{Conclusion}
+\label{sec:conclusion}
+
+The question we began with was not which positional encoding is best, but what
+property of a task predicts whether a positional encoding will help. We proposed
+one such property---whether the task's positional rule is written in terms of the
+sequence length---and tested it with a factorial design that separates ``failed to
+fit'' from ``failed to extrapolate''. The answer was no: the coupling class did
+not predict the sign of the effect, and \nope{} was never worse than an explicit
+code, including on the two tasks constructed to favour its competitors. What we
+can say with more confidence than before is narrower but firmer: the advantage of
+omitting positional encoding survives the condition we designed to break it.
+
+The broader methodological point is that recommendations about architectural
+components are conditional objects. An aggregate ranking over a task battery is a
+summary of a distribution, and if that distribution is heterogeneous the summary
+can invert the sign of the effect for any given task. Reporting the conditioning
+variable alongside the ranking costs little and makes the recommendation
+actionable: a practitioner who knows their task's coupling class can choose a
+positional encoding deliberately rather than by reputation.

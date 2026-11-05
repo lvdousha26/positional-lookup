@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+
+# LaTeX intermediates (the compiled PDF is kept)
+paper/*.aux
+paper/*.log
+paper/*.bbl
+paper/*.blg
+paper/*.fls
+paper/*.fdb_latexmk
+paper/*.out
+paper/*.toc
+paper/*.synctex.gz
+
+# scratch
+results/smoke/
+video/frame_*.png
+*.zip
+elan*.ps1

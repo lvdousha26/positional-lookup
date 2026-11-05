@@ -1,0 +1,71 @@
+\section{Related Work}
+\label{sec:related}
+
+\paragraph{Length generalisation.} Transformers fit short sequences but degrade
+sharply when asked to solve the same task at greater length
+\citep{anil2022exploring,deletang2023neural}. The failure is not merely a matter
+of scale: it persists in large language models and is only partially mitigated by
+chain-of-thought or scratchpad supervision \citep{anil2022exploring}. Two
+explanations have been offered. The first is architectural: self-attention with a
+fixed number of layers and heads cannot represent certain length-dependent
+computations, such as periodic finite-state languages, unless depth or width grows
+with the input \citep{hahn2020theoretical}. The second is algorithmic: a task
+extrapolates when it admits a short program over the attention primitives that
+works at every length \citep{weiss2021thinking,zhou2023what}, and shallow
+Transformers accordingly learn ``shortcut'' solutions to automata that fit the
+training lengths and break outside them \citep{liu2023shortcuts}. Both
+explanations locate the obstacle in the computational structure of the task
+rather than in the position code---which is the premise our experiments end up
+supporting better than the position-code hypothesis we set out to test.
+
+\paragraph{Positional encodings.} Absolute encodings, whether sinusoidal
+\citep{vaswani2017attention} or learned, give each position a distinct vector.
+Relative schemes instead inject pairwise information: learned relative
+representations \citep{shaw2018self}, T5's bucketed bias
+\citep{raffel2020exploring}, rotary embeddings that rotate queries and keys by a
+position-dependent angle \citep{su2024roformer}, and ALiBi's linear distance
+penalty \citep{press2022train}. The last two were introduced precisely as
+length-extrapolation devices, yet head-to-head comparisons on downstream
+reasoning tasks have been unflattering to them \citep{kazemnejad2023impact}.
+
+\paragraph{Designs built for extrapolation.} A parallel line of work engineers
+encodings for the extrapolation regime directly: log-decaying attention biases
+derived from receptive-field analysis \citep{chi2023dissecting}, relative
+encodings that maximise attention resolution \citep{sun2023length}, and
+randomised position sampling during training so that a model never sees a
+narrower range of positions than it will meet at test time
+\citep{ruoss2023randomized}. Arithmetic has served as a stress test: relative
+embeddings suffice for addition but not multiplication, where priming the
+training set with a handful of long examples is required
+\citep{jelassi2023length}. A recent survey organises these methods by encoding
+family and by the mechanism each attributes the failure to
+\citep{zhao2024survey}.
+
+\paragraph{The no-PE result and its scope.} \citet{kazemnejad2023impact}
+evaluate five schemes across ten tasks and conclude that having no positional
+encoding at all is better than any explicit alternative; they further show that a
+no-PE decoder can represent absolute and relative encodings in principle, while
+in practice resembling a relative scheme. Follow-up work probes the limits of
+that result, finding that no-PE models still extrapolate only to a bounded
+context and tracing the breakdown to attention becoming unfocused
+\citep{wang2024length}. Our paper takes the same result as its starting point and
+asks a question the aggregate ranking cannot answer: whether the advantage of
+\nope{} holds uniformly, or whether it too is conditional on the task.
+
+\paragraph{Mechanistic and training-dynamics evidence.} Small algorithmic models
+are tractable enough to reverse-engineer, and much of what is known about
+length-dependent behaviour comes from that setting: grokking was characterised as
+a transition from memorisation to a structured circuit rather than a change in
+fit \citep{power2022grokking,nanda2023progress}, and induction heads were
+identified as a mechanism for copying from context \citep{olsson2022induction}.
+We do not offer a mechanistic account of our own result---\secref{sec:limitations}
+names this as the main gap---but we frame the question so that such an account
+would be informative, and we report behavioural evidence that constrains it.
+
+\paragraph{This paper.} The no-PE result is stated as a ranking aggregated over a
+task battery. We do not dispute the individual measurements; we dispute that they
+compose into a task-independent recommendation. Our contribution is to supply the
+missing conditioning variable and to test whether the ranking it induces is
+constant across tasks. In this respect we follow the broader lesson of the
+small-scale algorithmic literature, where apparently uniform phenomena turn out
+to be task- and data-dependent \citep{power2022grokking,nanda2023progress}.
